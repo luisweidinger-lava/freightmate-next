@@ -6,6 +6,7 @@ import { EmailMessage } from '@/lib/types'
 import { formatDate } from '@/lib/utils'
 import { Mail, Star, Paperclip, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import MailBodyRenderer from '@/components/email/MailBodyRenderer'
 
 type Folder = 'sent' | 'starred' | 'spam' | 'bin' | 'drafts'
 
@@ -97,9 +98,7 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4">
-            <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-              {selected.body_text || selected.body_preview || '(no content)'}
-            </p>
+            <MailBodyRenderer body={selected.body_text} preview={selected.body_preview} />
           </div>
         </div>
       ) : (

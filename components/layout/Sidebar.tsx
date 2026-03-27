@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   Inbox, Send, Star, FileText, AlertOctagon, Trash2,
   LayoutDashboard, FolderOpen, Users, BarChart2,
-  Package, ChevronDown, ChevronRight,
+  Package, ChevronDown, ChevronRight, Briefcase,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
@@ -20,7 +20,8 @@ const EMAIL_LINKS = [
   { href: '/bin',     label: 'Bin',      icon: Trash2,       badge: null      },
 ]
 
-const CASE_LINKS = [
+const OPERATIONS_LINKS = [
+  { href: '/workbench', label: 'Workbench',      icon: Briefcase       },
   { href: '/dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
   { href: '/cases',     label: 'All Cases',      icon: FolderOpen      },
   { href: '/crm',       label: 'CRM & Contacts', icon: Users           },
@@ -60,17 +61,20 @@ export default function Sidebar() {
 
   useEffect(() => {
     fetchCounts()
-
-    // Realtime — refresh counts on relevant changes
     const channel = supabase
       .channel('sidebar-counts')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'email_messages' },  fetchCounts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'message_drafts' }, fetchCounts)
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Workbench is active on /workbench and on any /cases/[ref] route
+  const workbenchActive = (href: string) =>
+    href === '/workbench'
+      ? pathname === '/workbench' || (pathname.startsWith('/cases/') && pathname !== '/cases')
+      : pathname === href || (href !== '/cases' && pathname.startsWith(href + '/'))
 
   return (
     <aside
@@ -146,14 +150,14 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* Cases section */}
+        {/* Operations section */}
         <div>
           <p className="px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Cases
+            Operations
           </p>
           <div className="mt-1 space-y-0.5">
-            {CASE_LINKS.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href || pathname.startsWith(href + '/')
+            {OPERATIONS_LINKS.map(({ href, label, icon: Icon }) => {
+              const active = workbenchActive(href)
               return (
                 <Link
                   key={href}

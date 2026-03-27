@@ -24,3 +24,32 @@ body {
   50%       { opacity: 0.6; }
 }
 .draft-pulse { animation: pulse-purple 2s ease-in-out infinite; }
+
+/* ── Email body renderer — scoped styles, never leak into app UI ─────────── */
+.email-body {
+  font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #111827;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.email-body blockquote,
+.email-body .gmail_quote,
+.email-body .yahoo_quoted {
+  border-left: 3px solid #e5e7eb;
+  padding-left: 12px;
+  margin: 8px 0;
+  color: #6b7280;
+}
+.email-body a             { color: #2563eb; text-decoration: underline; }
+.email-body a:hover       { color: #1d4ed8; }
+.email-body img           { max-width: 100%; height: auto; }
+.email-body p             { margin: 0 0 8px 0; }
+.email-body p:last-child  { margin-bottom: 0; }
+.email-body ul, .email-body ol { padding-left: 20px; margin: 0 0 8px 0; }
+.email-body table         { border-collapse: collapse; max-width: 100%; font-size: 13px; }
+.email-body td, .email-body th { padding: 4px 8px; }
+.email-body pre           { background: #f3f4f6; padding: 8px 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; }
+.email-body h1, .email-body h2, .email-body h3, .email-body h4 { font-weight: 600; margin: 12px 0 6px 0; }
+.email-body hr            { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
