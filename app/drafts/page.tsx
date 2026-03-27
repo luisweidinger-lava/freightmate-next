@@ -58,18 +58,11 @@ function DraftDetailPanel({
   const isPending = !draft.approved_at && !draft.rejected_at && !draft.sent_at
 
   async function handleApprove() {
-    if (!process.env.NEXT_PUBLIC_N8N_SEND_URL) {
-      toast.error('N8N_SEND_URL not configured')
-      return
-    }
     setSending(true)
     try {
-      const res = await fetch(process.env.NEXT_PUBLIC_N8N_SEND_URL, {
+      const res = await fetch('/api/approve-draft', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-AxisLog-Key': process.env.NEXT_PUBLIC_N8N_WEBHOOK_SECRET || '',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           draft_id: draft.id,
           optional_edits: editing ? { subject, body_text: body } : undefined,

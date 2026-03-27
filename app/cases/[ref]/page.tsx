@@ -249,16 +249,10 @@ function ThreadPanel({
   const headerColor = channelType === 'client' ? 'bg-blue-50/60 border-blue-200' : 'bg-orange-50/60 border-orange-200'
   const headerText  = channelType === 'client' ? 'text-blue-800' : 'text-orange-800'
 
-  const webhookUrl = process.env.NEXT_PUBLIC_N8N_SEND_URL || ''
-  const webhookSecret = process.env.NEXT_PUBLIC_N8N_WEBHOOK_SECRET || ''
-
   async function approveDraft(draft: MessageDraft, edits?: { subject?: string; body_text?: string }) {
-    const res = await fetch(webhookUrl, {
+    const res = await fetch('/api/approve-draft', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-axislog-key': webhookSecret,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         draft_id:       draft.id,
         manager_id:     'coordinator',
