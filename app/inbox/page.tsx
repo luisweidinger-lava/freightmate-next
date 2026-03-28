@@ -8,7 +8,7 @@ import { formatDate, formatRef, extractTextPreview } from '@/lib/utils'
 import {
   Mail, Star, AlertTriangle, Paperclip, Briefcase,
   Search, Link2, Plus, Trash2, AlertOctagon, X,
-  Reply, ReplyAll, Forward, Edit3,
+  Reply, ReplyAll, Forward, Edit3, RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -401,8 +401,9 @@ function InboxContent() {
   const [filter, setFilter]     = useState<'all' | 'unread' | 'unmatched'>(
     filterParam === 'unmatched' ? 'unmatched' : 'all'
   )
-  const [loading, setLoading] = useState(true)
-  const [compose, setCompose] = useState(false)
+  const [loading, setLoading]   = useState(true)
+  const [syncing, setSyncing]   = useState(false)
+  const [compose, setCompose]   = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -427,6 +428,23 @@ function InboxContent() {
   }, [filter, idParam])
 
   useEffect(() => { load() }, [load])
+
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/nylas-sync', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(`Synced ${data.synced} messages from Gmail`)
+        load()
+      } else {
+        toast.error(data.error || 'Sync failed')
+      }
+    } finally {
+      setSyncing(false)
+    }
+  }
+
 
   // Mark as read when selected
   useEffect(() => {
@@ -457,6 +475,15 @@ function InboxContent() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-900">Inbox</h2>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                title="Sync from Gmail"
+                className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                <RefreshCw size={11} className={syncing ? 'animate-spin' : ''} />
+                {syncing ? 'Syncing…' : 'Sync'}
+              </button>
               <button
                 onClick={() => setCompose(true)}
                 className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
