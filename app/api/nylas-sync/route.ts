@@ -7,8 +7,9 @@ import { createClient } from '@supabase/supabase-js'
 // Also works as a credential test — 401 here means the API key is invalid.
 
 export async function POST(_req: NextRequest) {
-  const apiKey  = process.env.NYLAS_API_KEY
-  const grantId = process.env.NYLAS_GRANT_ID
+  const apiKey    = process.env.NYLAS_API_KEY
+  const grantId   = process.env.NYLAS_GRANT_ID
+  const nylasBase = process.env.NYLAS_API_BASE ?? 'https://api.us.nylas.com'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -21,7 +22,7 @@ export async function POST(_req: NextRequest) {
 
   // ── 1. Fetch from Nylas ────────────────────────────────────────────────────
   const nylasRes = await fetch(
-    `https://api.us.nylas.com/v3/grants/${grantId}/messages?limit=50&fields=standard`,
+    `${nylasBase}/v3/grants/${grantId}/messages?limit=50&fields=standard`,
     {
       headers: {
         'Authorization': `Bearer ${apiKey}`,

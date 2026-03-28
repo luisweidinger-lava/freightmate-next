@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto'
 export async function POST(req: NextRequest) {
   const apiKey   = process.env.NYLAS_API_KEY
   const grantId  = process.env.NYLAS_GRANT_ID
+  const nylasBase = process.env.NYLAS_API_BASE ?? 'https://api.us.nylas.com'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
   if (replyToNylasMessageId) nylasBody.reply_to_message_id = replyToNylasMessageId
 
   const nylasRes = await fetch(
-    `https://api.us.nylas.com/v3/grants/${grantId}/messages/send`,
+    `${nylasBase}/v3/grants/${grantId}/messages/send`,
     {
       method: 'POST',
       headers: {
