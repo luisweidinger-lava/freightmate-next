@@ -69,7 +69,8 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
         toast.success('Email sent')
         onClose()
       } else {
-        toast.error('Failed to send — check server logs')
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to send — check server logs')
       }
     } finally {
       setSending(false)
@@ -77,17 +78,19 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
   }
 
   async function handleSaveDraft() {
-    await supabase.from('email_messages').insert({
-      folder:          'drafts',
-      direction:       'outbound',
-      subject:         subject.trim() || '(no subject)',
-      body_text:       body + quotedBody,
-      body_preview:    body.slice(0, 200),
-      recipient_email: to.trim(),
-      sender_email:    'freightmate58@gmail.com',
-      is_read:         true,
-      has_attachments: false,
+    const { error } = await supabase.from('email_messages').insert({
+      folder:           'drafts',
+      direction:        'outbound',
+      subject:          subject.trim() || '(no subject)',
+      body_text:        body + quotedBody,
+      body_preview:     body.slice(0, 200),
+      recipient_email:  to.trim(),
+      sender_email:     'freightmate58@gmail.com',
+      is_read:          true,
+      has_attachments:  false,
+      nylas_message_id: `draft_${crypto.randomUUID()}`,
     })
+    if (error) { toast.error('Failed to save draft: ' + error.message); return }
     toast.success('Draft saved')
     onClose()
   }

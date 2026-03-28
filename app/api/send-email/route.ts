@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'crypto'
 
 // ── Nylas send pipeline ────────────────────────────────────────────────────────
 // POST /v3/grants/{NYLAS_GRANT_ID}/messages/send
@@ -58,7 +59,9 @@ export async function POST(req: NextRequest) {
 
   const sent = await nylasRes.json()
   // Nylas v3 response: { request_id, data: { id, thread_id, ... } }
-  const nylasMessageId = sent?.data?.id ?? null
+  // Fall back to a local UUID if Nylas returns unexpected structure,
+  // so the Supabase insert always succeeds even before the NOT NULL migration.
+  const nylasMessageId = sent?.data?.id ?? `local_${randomUUID()}`
   const nylasThreadId  = sent?.data?.thread_id ?? null
 
   // ── 2. Persist to Supabase ─────────────────────────────────────────────────
