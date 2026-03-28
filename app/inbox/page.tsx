@@ -4,14 +4,16 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { EmailMessage } from '@/lib/types'
-import { formatDate, formatRef } from '@/lib/utils'
+import { formatDate, formatRef, extractTextPreview } from '@/lib/utils'
 import {
   Mail, Star, AlertTriangle, Paperclip, Briefcase,
   Search, Link2, Plus, Trash2, AlertOctagon, X,
+  Reply, ReplyAll, Forward, Edit3,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import MailBodyRenderer from '@/components/email/MailBodyRenderer'
+import ComposePanel, { ComposeMode } from '@/components/email/ComposePanel'
 
 // ─── Skeleton loaders ─────────────────────────────────────────────────────────
 
@@ -110,7 +112,7 @@ function MailListItem({
             </span>
           )}
           <p className="text-xs text-gray-400 truncate">
-            {email.body_preview || ''}
+            {extractTextPreview(email.body_preview || email.body_text)}
           </p>
         </div>
       </div>
@@ -232,6 +234,7 @@ function MailDetail({
   email: EmailMessage; onClose: () => void; onAction: () => void
 }) {
   const router = useRouter()
+  const [compose, setCompose] = useState<{ mode: ComposeMode } | null>(null)
 
   async function toggleStar() {
     await supabase.from('email_messages').update({ is_starred: !email.is_starred }).eq('id', email.id)
@@ -326,7 +329,28 @@ function MailDetail({
       </div>
 
       {/* Bottom action bar */}
-      <div className="px-6 py-3 border-t border-gray-100 flex items-center gap-2 bg-white">
+      <div className="px-6 py-3 border-t border-gray-100 flex items-center gap-1.5 bg-white flex-wrap">
+        <button
+          onClick={() => setCompose({ mode: 'reply' })}
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 rounded-lg px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors font-medium"
+        >
+          <Reply size={12} /> Reply
+        </button>
+        <button
+          onClick={() => setCompose({ mode: 'replyAll' })}
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+        >
+          <ReplyAll size={12} /> Reply all
+        </button>
+        <button
+          onClick={() => setCompose({ mode: 'forward' })}
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+        >
+          <Forward size={12} /> Forward
+        </button>
+
+        <div className="w-px h-4 bg-gray-200 mx-1" />
+
         <button
           onClick={toggleStar}
           className={cn(
@@ -352,6 +376,14 @@ function MailDetail({
           <Trash2 size={12} /> Bin
         </button>
       </div>
+
+      {compose && (
+        <ComposePanel
+          mode={compose.mode}
+          replyTo={email}
+          onClose={() => setCompose(null)}
+        />
+      )}
     </div>
   )
 }
@@ -370,6 +402,7 @@ function InboxContent() {
     filterParam === 'unmatched' ? 'unmatched' : 'all'
   )
   const [loading, setLoading] = useState(true)
+  const [compose, setCompose] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -423,6 +456,13 @@ function InboxContent() {
         <div className="px-4 pt-4 pb-3 border-b border-gray-100 space-y-2.5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-900">Inbox</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCompose(true)}
+                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                <Edit3 size={11} /> Compose
+              </button>
             {unmatchedCount > 0 && (
               <button
                 onClick={() => setFilter('unmatched')}
@@ -431,6 +471,7 @@ function InboxContent() {
                 {unmatchedCount} unmatched
               </button>
             )}
+            </div>
           </div>
 
           <div className="relative">
@@ -500,6 +541,10 @@ function InboxContent() {
             <p className="text-sm text-gray-400">Select an email to read</p>
           </div>
         </div>
+      )}
+
+      {compose && (
+        <ComposePanel mode="compose" onClose={() => setCompose(false)} />
       )}
     </div>
   )

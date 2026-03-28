@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import MailBodyRenderer from '@/components/email/MailBodyRenderer'
 
 // ─── Horizontal Status Flow ───────────────────────────────────────────────────
 
@@ -338,9 +339,7 @@ function ThreadPanel({
               </span>
               <span className="text-gray-400 flex-shrink-0">{formatDate(msg.created_at)}</span>
             </div>
-            <p className="leading-relaxed whitespace-pre-wrap text-gray-700">
-              {msg.body_preview || msg.body_text || '(no content)'}
-            </p>
+            <MailBodyRenderer body={msg.body_text} preview={msg.body_preview} />
             {msg.has_attachments && (
               <div className="flex items-center gap-1 mt-2 text-gray-500">
                 <Paperclip size={11} />
@@ -623,44 +622,115 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
 
 // ─── Mini case list (column 1) ────────────────────────────────────────────────
 
-function CaseMiniList({ currentRef }: { currentRef: string | null }) {
-  const [cases, setCases] = useState<ShipmentCase[]>([])
+const STATUS_PILL: Record<string, string> = {
+  new:               'bg-blue-100 text-blue-700',
+  vendor_requested:  'bg-yellow-100 text-yellow-700',
+  quote_received:    'bg-amber-100 text-amber-700',
+  quote_sent:        'bg-orange-100 text-orange-700',
+  client_confirmed:  'bg-teal-100 text-teal-700',
+  vendor_confirmed:  'bg-cyan-100 text-cyan-700',
+  label_received:    'bg-indigo-100 text-indigo-700',
+  booked:            'bg-purple-100 text-purple-700',
+  in_transit:        'bg-blue-100 text-blue-800',
+  delivered:         'bg-green-100 text-green-700',
+  closed:            'bg-gray-100 text-gray-500',
+}
 
-  useEffect(() => {
-    supabase
+const PRIORITY_DOT: Record<string, string> = {
+  urgent: 'bg-red-500',
+  high:   'bg-orange-400',
+  normal: 'bg-gray-300',
+  low:    'bg-gray-200',
+}
+
+function CaseMiniList({ currentRef }: { currentRef: string | null }) {
+  const [cases,   setCases]   = useState<ShipmentCase[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(false)
+
+  async function fetchCases() {
+    setLoading(true)
+    setError(false)
+    const { data, error: err } = await supabase
       .from('shipment_cases')
       .select('id, ref_number, status, client_name, priority, updated_at')
-      .not('status', 'in', '("closed")')
+      .not('status', 'in', '("closed","delivered")')
       .order('updated_at', { ascending: false })
-      .limit(30)
-      .then(({ data }) => setCases((data || []) as ShipmentCase[]))
-  }, [])
+      .limit(40)
+    if (err) { setError(true); setLoading(false); return }
+    setCases((data || []) as ShipmentCase[])
+    setLoading(false)
+  }
 
-  const PRIORITY_DOT: Record<string, string> = {
-    urgent: 'bg-red-500',
-    high:   'bg-orange-400',
-    normal: 'bg-gray-300',
-    low:    'bg-gray-200',
+  useEffect(() => { fetchCases() }, [])
+
+  if (loading) {
+    return (
+      <div className="divide-y divide-gray-50">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-start gap-2 px-3 py-2.5 animate-pulse">
+            <div className="w-1.5 h-1.5 rounded-full bg-gray-200 mt-1.5 flex-shrink-0" />
+            <div className="flex-1 space-y-1.5 min-w-0">
+              <div className="h-2.5 w-24 bg-gray-200 rounded" />
+              <div className="h-2 w-16 bg-gray-100 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 px-3 text-center">
+        <p className="text-xs text-gray-400 mb-2">Failed to load cases</p>
+        <button
+          onClick={fetchCases}
+          className="text-xs text-blue-600 hover:underline"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  if (cases.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-10 px-3 text-center text-gray-400">
+        <p className="text-xs">No active cases</p>
+      </div>
+    )
   }
 
   return (
     <div className="divide-y divide-gray-50">
-      {cases.map(c => (
-        <Link
-          key={c.id}
-          href={`/cases/${c.ref_number || c.id}`}
-          className={cn(
-            'flex items-start gap-2 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left',
-            c.ref_number === currentRef && 'bg-blue-50 border-l-2 border-l-blue-500'
-          )}
-        >
-          <span className={cn('w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0', PRIORITY_DOT[c.priority] || 'bg-gray-300')} />
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-gray-800 truncate">{formatRef(c.ref_number)}</p>
-            <p className="text-xs text-gray-400 truncate">{c.client_name || '—'}</p>
-          </div>
-        </Link>
-      ))}
+      {cases.map(c => {
+        const isCurrent = c.ref_number === currentRef
+        return (
+          <Link
+            key={c.id}
+            href={`/cases/${c.ref_number || c.id}`}
+            className={cn(
+              'flex items-start gap-2 px-3 py-2.5 hover:bg-gray-50 transition-colors',
+              isCurrent && 'bg-blue-50 border-l-[3px] border-l-blue-500'
+            )}
+          >
+            <span className={cn('w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0', PRIORITY_DOT[c.priority] || 'bg-gray-300')} />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-gray-800 truncate">{formatRef(c.ref_number)}</p>
+              {c.client_name && (
+                <p className="text-[10px] text-gray-400 truncate">{c.client_name}</p>
+              )}
+              <div className="flex items-center justify-between mt-1 gap-1">
+                <span className={cn('text-[9px] px-1.5 py-0.5 rounded font-medium leading-none', STATUS_PILL[c.status] || 'bg-gray-100 text-gray-500')}>
+                  {c.status.replace(/_/g, ' ')}
+                </span>
+                <span className="text-[9px] text-gray-300">{formatDate(c.updated_at)}</span>
+              </div>
+            </div>
+          </Link>
+        )
+      })}
     </div>
   )
 }

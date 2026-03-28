@@ -4,8 +4,8 @@ import Sidebar from '@/components/layout/Sidebar'
 import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
-  title: 'Freightmate-Next',
-  description: 'AI-assisted logistics mail operations platform',
+  title: 'AxisLog — Logistics Operations',
+  description: 'AI-assisted logistics coordination platform',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
