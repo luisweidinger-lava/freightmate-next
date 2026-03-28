@@ -242,6 +242,27 @@ export default function OnboardingWizard({ onComplete, onSkip }: OnboardingWizar
         setSaving(false)
         return
       }
+
+      // Also promote client/vendor contacts into their dedicated tables
+      const clientRows = rows.filter(r => r.persona === 'client').map(r => ({
+        email:        r.email,
+        display_name: r.display_name,
+        company_name: r.company_name,
+        is_active:    true,
+      }))
+      const vendorRows = rows.filter(r => r.persona === 'vendor').map(r => ({
+        email:        r.email,
+        name:         r.display_name || r.company_name || r.email,
+        default_mode: 'email',
+        is_active:    true,
+      }))
+
+      if (clientRows.length > 0) {
+        await supabase.from('clients').upsert(clientRows, { onConflict: 'email' })
+      }
+      if (vendorRows.length > 0) {
+        await supabase.from('vendors').upsert(vendorRows, { onConflict: 'email' })
+      }
     }
 
     toast.success(`${rows.length} contacts saved`)

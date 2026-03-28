@@ -62,7 +62,7 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
           cc:              cc.trim() || undefined,
           subject:         subject.trim(),
           body:            body + quotedBody,
-          replyToMessageId: replyTo?.id,
+          replyToNylasMessageId: replyTo?.nylas_message_id ?? undefined,
         }),
       })
       if (res.ok) {

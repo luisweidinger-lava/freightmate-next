@@ -17,6 +17,7 @@ export interface Database {
       case_contacts:   { Row: CaseContact }
       mailboxes:       { Row: Mailbox }
       vendors:         { Row: Vendor }
+      clients:         { Row: Client }
       shipments:       { Row: Shipment }
     }
   }
@@ -215,9 +216,21 @@ export interface Mailbox {
 
 export interface Vendor {
   id:           string
+  contact_id:   string | null
   name:         string
   email:        string
   default_mode: string
+  is_active:    boolean
+  created_at:   string
+}
+
+export interface Client {
+  id:           string
+  contact_id:   string | null
+  email:        string
+  display_name: string | null
+  company_name: string | null
+  notes:        string | null
   is_active:    boolean
   created_at:   string
 }

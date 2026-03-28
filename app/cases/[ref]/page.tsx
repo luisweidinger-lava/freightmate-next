@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import MailBodyRenderer from '@/components/email/MailBodyRenderer'
 
-// ─── Horizontal Status Flow ───────────────────────────────────────────────────
+// ─── Vertical Operational Timeline ───────────────────────────────────────────
 
 function StatusFlow({ status, caseId }: { status: string; caseId: string }) {
   const currentIdx = STATUS_STEPS.findIndex(s => s.key === status)
@@ -37,102 +37,100 @@ function StatusFlow({ status, caseId }: { status: string; caseId: string }) {
 
   return (
     <div className="w-full">
-      {/* Step track */}
-      <div className="flex items-start overflow-x-auto pb-2 gap-0">
-        {STATUS_STEPS.map((step, idx) => {
-          const isPast    = idx < currentIdx
-          const isCurrent = idx === currentIdx
-          const isFuture  = idx > currentIdx
-          const hasNote   = !!notes[idx]
+      <div className="relative">
+        {/* Vertical spine */}
+        <div className="absolute left-[11px] top-3 bottom-3 w-0.5 bg-gray-200" />
 
-          return (
-            <div key={step.key} className="flex items-start flex-shrink-0">
-              {/* Step */}
-              <div className="flex flex-col items-center gap-1 w-20">
-                {/* Circle */}
-                <button
-                  onClick={() => openNote(idx)}
-                  title="Add note"
-                  className={cn(
-                    'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all relative',
-                    isPast    && 'bg-blue-500 border-blue-500 text-white hover:bg-blue-600',
-                    isCurrent && 'bg-white border-blue-500 text-blue-600 ring-2 ring-blue-200 shadow-sm',
-                    isFuture  && 'bg-white border-gray-300 text-gray-400 hover:border-gray-400',
-                  )}
-                >
-                  {isPast ? <Check size={11} /> : idx + 1}
-                  {hasNote && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full" />
-                  )}
-                </button>
+        <div className="space-y-0">
+          {STATUS_STEPS.map((step, idx) => {
+            const isPast    = idx < currentIdx
+            const isCurrent = idx === currentIdx
+            const hasNote   = !!notes[idx]
 
-                {/* Label */}
-                <span className={cn(
-                  'text-center leading-tight',
-                  isCurrent ? 'text-blue-700 font-semibold text-[10px]' : 'text-gray-400 text-[9px]'
-                )}>
-                  {step.label}
-                </span>
+            return (
+              <div key={step.key}>
+                {/* Row */}
+                <div className="relative flex items-start gap-3 py-2">
+                  {/* Circle */}
+                  <button
+                    onClick={() => openNote(idx)}
+                    title="Add note"
+                    className={cn(
+                      'relative z-10 w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all mt-0.5',
+                      isPast    && 'bg-blue-500 border-blue-500 text-white hover:bg-blue-600',
+                      isCurrent && 'bg-white border-blue-500 text-blue-600 ring-2 ring-blue-200 shadow-sm',
+                      !isPast && !isCurrent && 'bg-white border-gray-300 text-gray-400 hover:border-gray-400',
+                    )}
+                  >
+                    {isPast ? <Check size={10} /> : null}
+                    {hasNote && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-white" />
+                    )}
+                  </button>
 
-                {/* Note preview */}
-                {hasNote && (
-                  <span className="text-[9px] text-amber-600 text-center leading-tight max-w-[72px] truncate">
-                    {notes[idx]}
-                  </span>
+                  {/* Label + note preview */}
+                  <div className="flex-1 min-w-0 pb-0.5">
+                    <span className={cn(
+                      'text-xs leading-tight block',
+                      isCurrent  && 'text-blue-700 font-semibold',
+                      isPast     && 'text-gray-500',
+                      !isPast && !isCurrent && 'text-gray-400',
+                    )}>
+                      {step.label}
+                      {isCurrent && <span className="ml-1.5 text-[10px] text-blue-400 font-normal">← current</span>}
+                    </span>
+                    {hasNote && (
+                      <span className="text-[10px] text-amber-600 leading-tight block mt-0.5 truncate">
+                        {notes[idx]}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Inline note editor */}
+                {editingIdx === idx && (
+                  <div className="ml-8 mb-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs font-medium text-amber-800 mb-2 flex items-center gap-1.5">
+                      <StickyNote size={12} />
+                      Note for: <span className="font-semibold">{step.label}</span>
+                    </p>
+                    <textarea
+                      autoFocus
+                      value={noteInput}
+                      onChange={e => setNoteInput(e.target.value)}
+                      rows={2}
+                      placeholder="Add your note here…"
+                      className="w-full text-xs border border-amber-200 rounded-md px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30 bg-white resize-none"
+                    />
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => saveNote(idx)}
+                        className="text-xs bg-amber-500 text-white px-3 py-1 rounded-md hover:bg-amber-600 transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingIdx(null)}
+                        className="text-xs text-gray-500 px-3 py-1 rounded-md hover:bg-gray-100 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      {notes[idx] && (
+                        <button
+                          onClick={() => { setNotes(n => ({ ...n, [idx]: '' })); setEditingIdx(null) }}
+                          className="text-xs text-red-500 px-2 py-1 rounded-md hover:bg-red-50 transition-colors ml-auto"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
-
-              {/* Connector line */}
-              {idx < STATUS_STEPS.length - 1 && (
-                <div className={cn(
-                  'h-0.5 w-3 mt-3 flex-shrink-0',
-                  isPast ? 'bg-blue-400' : 'bg-gray-200'
-                )} />
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Note editor */}
-      {editingIdx !== null && (
-        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs font-medium text-amber-800 mb-2 flex items-center gap-1.5">
-            <StickyNote size={12} />
-            Note for: <span className="font-semibold">{STATUS_STEPS[editingIdx]?.label}</span>
-          </p>
-          <textarea
-            autoFocus
-            value={noteInput}
-            onChange={e => setNoteInput(e.target.value)}
-            rows={2}
-            placeholder="Add your note here…"
-            className="w-full text-xs border border-amber-200 rounded-md px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/30 bg-white resize-none"
-          />
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => saveNote(editingIdx)}
-              className="text-xs bg-amber-500 text-white px-3 py-1 rounded-md hover:bg-amber-600 transition-colors"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setEditingIdx(null)}
-              className="text-xs text-gray-500 px-3 py-1 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-            {notes[editingIdx] && (
-              <button
-                onClick={() => { setNotes(n => ({ ...n, [editingIdx]: '' })); setEditingIdx(null) }}
-                className="text-xs text-red-500 px-2 py-1 rounded-md hover:bg-red-50 transition-colors ml-auto"
-              >
-                Clear note
-              </button>
-            )}
-          </div>
+            )
+          })}
         </div>
-      )}
+      </div>
     </div>
   )
 }
