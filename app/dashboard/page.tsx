@@ -15,17 +15,17 @@ import { cn } from '@/lib/utils'
 
 const PIPELINE_STAGES = [
   { key: 'new',              label: 'New',        color: 'bg-slate-400'   },
-  { key: 'vendor_requested', label: 'Vendor Req', color: 'bg-sky-400'     },
-  { key: 'quote_received',   label: 'Quote Rcvd', color: 'bg-amber-400'   },
+  { key: 'vendor_requested', label: 'Vendor Req', color: 'bg-blue-400'    },
+  { key: 'quote_received',   label: 'Quote Rcvd', color: 'bg-slate-500'   },
   { key: 'quote_sent',       label: 'Quote Sent', color: 'bg-indigo-400'  },
-  { key: 'client_confirmed', label: 'Confirmed',  color: 'bg-green-400'   },
-  { key: 'in_transit',       label: 'In Transit', color: 'bg-orange-400'  },
+  { key: 'client_confirmed', label: 'Confirmed',  color: 'bg-teal-500'    },
+  { key: 'in_transit',       label: 'In Transit', color: 'bg-blue-500'    },
 ]
 
 // ─── SLA dot ─────────────────────────────────────────────────────────────────
 
 function SlaDot({ status }: { status: 'ok' | 'warning' | 'overdue' }) {
-  const colors = { ok: 'bg-green-400', warning: 'bg-amber-400', overdue: 'bg-red-500 animate-pulse' }
+  const colors = { ok: 'bg-teal-400', warning: 'bg-slate-400', overdue: 'bg-rose-500 animate-pulse' }
   return <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${colors[status]}`} />
 }
 
@@ -34,15 +34,15 @@ function SlaDot({ status }: { status: 'ok' | 'warning' | 'overdue' }) {
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     new:               'bg-slate-100 text-slate-600',
-    vendor_requested:  'bg-sky-50 text-sky-700',
-    quote_received:    'bg-amber-50 text-amber-700',
+    vendor_requested:  'bg-blue-50 text-blue-700',
+    quote_received:    'bg-slate-100 text-slate-700',
     quote_sent:        'bg-indigo-50 text-indigo-700',
-    client_confirmed:  'bg-green-50 text-green-700',
-    vendor_confirmed:  'bg-teal-50 text-teal-700',
+    client_confirmed:  'bg-teal-50 text-teal-700',
+    vendor_confirmed:  'bg-slate-100 text-slate-700',
     label_received:    'bg-violet-50 text-violet-700',
-    booked:            'bg-emerald-50 text-emerald-700',
-    in_transit:        'bg-orange-50 text-orange-700',
-    delivered:         'bg-green-100 text-green-800',
+    booked:            'bg-indigo-50 text-indigo-700',
+    in_transit:        'bg-blue-50 text-blue-700',
+    delivered:         'bg-slate-100 text-slate-700',
     closed:            'bg-gray-100 text-gray-500',
   }
   return (
@@ -131,10 +131,10 @@ export default function DashboardPage() {
       {/* Compact KPI strip */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: 'Active Cases',     value: active,   icon: Activity,      color: 'bg-violet-500', light: 'bg-violet-50 text-violet-700' },
-          { label: 'Delayed',          value: delayed,  icon: Clock,         color: 'bg-amber-500',  light: 'bg-amber-50 text-amber-700'   },
-          { label: 'Critical',         value: critical, icon: AlertTriangle, color: 'bg-red-500',    light: 'bg-red-50 text-red-700'       },
-          { label: 'Needs Attention',  value: needsAct, icon: FileWarning,   color: 'bg-sky-500',    light: 'bg-sky-50 text-sky-700'       },
+          { label: 'Active Cases',     value: active,   icon: Activity,      color: 'bg-violet-500',  light: 'bg-violet-50 text-violet-700'  },
+          { label: 'Delayed',          value: delayed,  icon: Clock,         color: 'bg-slate-500',   light: 'bg-slate-100 text-slate-700'   },
+          { label: 'Critical',         value: critical, icon: AlertTriangle, color: 'bg-rose-500',    light: 'bg-rose-50 text-rose-700'      },
+          { label: 'Needs Attention',  value: needsAct, icon: FileWarning,   color: 'bg-blue-500',    light: 'bg-blue-50 text-blue-700'      },
         ].map(({ label, value, icon: Icon, color, light }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3 shadow-sm">
             <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', color)}>

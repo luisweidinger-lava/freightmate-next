@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
 
-  const { to, cc, subject, body, replyToNylasMessageId } = await req.json()
+  const { to, cc, subject, body, replyToNylasMessageId, case_id, channel_id } = await req.json()
 
   if (!to || !subject) {
     return Response.json({ error: 'to and subject are required' }, { status: 400 })
@@ -80,6 +80,8 @@ export async function POST(req: NextRequest) {
     has_attachments:    false,
     nylas_message_id:   nylasMessageId,
     nylas_thread_id:    nylasThreadId,
+    ...(case_id    && { case_id }),
+    ...(channel_id && { channel_id }),
   })
 
   if (dbError) {

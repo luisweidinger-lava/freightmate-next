@@ -119,7 +119,7 @@ function MailListItem({
         {/* Row 3: preview + badges */}
         <div className="flex items-center gap-1.5 mt-0.5">
           {isUnmatched && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
               <AlertTriangle size={9} /> Unmatched
             </span>
           )}
@@ -188,9 +188,9 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
   }
 
   return (
-    <div className="border-t border-amber-100 bg-amber-50/50 px-5 py-4 space-y-3">
-      <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
-        <AlertTriangle size={13} className="text-amber-500" /> Triage required — email not linked to any case
+    <div className="border-t border-slate-200 bg-slate-50/50 px-5 py-4 space-y-3">
+      <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+        <AlertTriangle size={13} className="text-slate-500" /> Triage required — email not linked to any case
       </p>
 
       <div className="flex gap-2">
@@ -214,7 +214,7 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
           onClick={createCase}
           disabled={creating || !refInput.trim()}
           title="Create new case"
-          className="flex items-center gap-1.5 text-xs px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-1.5 text-xs px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
         >
           <Plus size={11} /> {creating ? 'Creating…' : 'New case'}
         </button>
@@ -303,23 +303,23 @@ function MailDetail({
 
           {/* Case action bar */}
           {email.case_id ? (
-            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+            <div className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
               <div className="flex items-center gap-2 text-xs">
-                <span className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-green-700 font-medium">Linked to case</span>
+                <span className="w-2 h-2 rounded-full bg-teal-500" />
+                <span className="text-teal-700 font-medium">Linked to case</span>
               </div>
               <button
                 onClick={() => router.push(`/cases/${email.case_id}`)}
-                className="flex items-center gap-1.5 text-xs text-green-700 hover:text-green-900 font-semibold transition-colors"
+                className="flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-900 font-semibold transition-colors"
               >
                 <Briefcase size={12} />
                 Open in Workbench
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              <AlertTriangle size={13} className="text-amber-500 flex-shrink-0" />
-              <span className="text-xs text-amber-800 font-medium">Unmatched — not linked to any case</span>
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              <AlertTriangle size={13} className="text-slate-500 flex-shrink-0" />
+              <span className="text-xs text-slate-700 font-medium">Unmatched — not linked to any case</span>
             </div>
           )}
 
@@ -368,7 +368,7 @@ function MailDetail({
           className={cn(
             'flex items-center gap-1.5 text-xs border rounded-lg px-3 py-1.5 transition-colors',
             email.is_starred
-              ? 'border-amber-300 text-amber-600 bg-amber-50 hover:bg-amber-100'
+              ? 'border-slate-300 text-slate-600 bg-slate-50 hover:bg-slate-100'
               : 'border-gray-200 text-gray-500 hover:bg-gray-50'
           )}
         >
@@ -555,7 +555,7 @@ function InboxContent() {
             {unmatchedCount > 0 && (
               <button
                 onClick={() => setFilter('unmatched')}
-                className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium hover:bg-amber-200 transition-colors"
+                className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors"
               >
                 {unmatchedCount} unmatched
               </button>
@@ -583,7 +583,7 @@ function InboxContent() {
                   'text-xs px-2.5 py-1 rounded-md transition-colors capitalize',
                   filter === f
                     ? f === 'unmatched'
-                      ? 'bg-amber-100 text-amber-700 font-medium'
+                      ? 'bg-slate-100 text-slate-700 font-medium'
                       : 'bg-blue-100 text-blue-700 font-medium'
                     : 'text-gray-500 hover:bg-gray-100'
                 )}

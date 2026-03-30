@@ -79,17 +79,17 @@ function WeeklyVolume({ cases }: { cases: ShipmentCase[] }) {
 // ─── Status distribution ──────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  new:               'bg-gray-400',
-  vendor_requested:  'bg-blue-500',
-  quote_received:    'bg-yellow-500',
+  new:               'bg-slate-400',
+  vendor_requested:  'bg-blue-400',
+  quote_received:    'bg-slate-500',
   quote_sent:        'bg-indigo-500',
-  client_confirmed:  'bg-green-500',
-  vendor_confirmed:  'bg-teal-500',
-  label_received:    'bg-purple-500',
-  booked:            'bg-emerald-500',
-  in_transit:        'bg-orange-500',
-  delivered:         'bg-green-600',
-  closed:            'bg-gray-300',
+  client_confirmed:  'bg-teal-500',
+  vendor_confirmed:  'bg-slate-600',
+  label_received:    'bg-violet-500',
+  booked:            'bg-indigo-500',
+  in_transit:        'bg-blue-500',
+  delivered:         'bg-slate-600',
+  closed:            'bg-slate-300',
 }
 
 function StatusDistribution({ cases }: { cases: ShipmentCase[] }) {
@@ -125,7 +125,7 @@ function StatusDistribution({ cases }: { cases: ShipmentCase[] }) {
 function PriorityDistribution({ cases }: { cases: ShipmentCase[] }) {
   const order = ['urgent', 'high', 'normal', 'low']
   const colors: Record<string, string> = {
-    urgent: 'bg-red-500', high: 'bg-orange-500', normal: 'bg-blue-400', low: 'bg-gray-300',
+    urgent: 'bg-rose-500', high: 'bg-amber-500', normal: 'bg-slate-400', low: 'bg-slate-200',
   }
   const counts = order.map(p => ({
     label: p,

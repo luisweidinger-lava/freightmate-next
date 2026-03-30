@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
-  const n8nUrl    = process.env.N8N_SEND_URL
+  const n8nUrl    = process.env.N8N_SEND_WEBHOOK_URL
   const secret    = process.env.N8N_WEBHOOK_SECRET
 
   if (!n8nUrl || !secret) {

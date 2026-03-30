@@ -17,8 +17,8 @@
   --sidebar-active: #FFFFFF;
 
   /* Channel signature colors */
-  --client-accent:  #38BDF8;  /* sky-400 */
-  --vendor-accent:  #FB923C;  /* orange-400 */
+  --client-accent:  #60A5FA;  /* blue-400 — softer than sky */
+  --vendor-accent:  #94A3B8;  /* slate-400 — neutral, professional */
   --intel-accent:   #8B5CF6;  /* violet-500 */
 }
 

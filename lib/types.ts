@@ -264,10 +264,10 @@ export const STATUS_STEPS: { key: CaseStatus; label: string }[] = [
 ]
 
 export const PERSONA_COLORS: Record<string, string> = {
-  client:      'text-blue-600 bg-blue-50',
-  vendor:      'text-orange-600 bg-orange-50',
-  coordinator: 'text-purple-600 bg-purple-50',
-  internal:    'text-gray-600 bg-gray-100',
-  general:     'text-gray-500 bg-gray-50',
-  unknown:     'text-red-500 bg-red-50',
+  client:      'text-slate-700 bg-slate-100',
+  vendor:      'text-slate-600 bg-slate-100',
+  coordinator: 'text-violet-700 bg-violet-50',
+  internal:    'text-slate-600 bg-slate-100',
+  general:     'text-slate-500 bg-slate-50',
+  unknown:     'text-rose-600 bg-rose-50',
 }

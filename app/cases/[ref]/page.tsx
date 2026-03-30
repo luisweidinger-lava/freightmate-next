@@ -97,8 +97,8 @@ function StatusTimeline({ status, caseId }: { status: string; caseId: string }) 
 
               {/* Inline note editor */}
               {editingIdx === idx && (
-                <div className="ml-10 mb-2 bg-amber-50/80 border border-amber-200 rounded-xl p-3 animate-shimmer-in">
-                  <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
+                <div className="ml-10 mb-2 bg-slate-50/80 border border-slate-200 rounded-xl p-3 animate-shimmer-in">
+                  <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
                     <StickyNote size={12} />
                     Note — <span>{step.label}</span>
                   </p>
@@ -108,12 +108,12 @@ function StatusTimeline({ status, caseId }: { status: string; caseId: string }) 
                     onChange={e => setNoteInput(e.target.value)}
                     rows={2}
                     placeholder="Add your note…"
-                    className="w-full text-xs border border-amber-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300/40 bg-white/80 resize-none"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300/40 bg-white/80 resize-none"
                   />
                   <div className="flex gap-2 mt-2">
                     <button
                       onClick={() => saveNote(idx)}
-                      className="text-xs bg-amber-500 text-white px-3 py-1 rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                      className="text-xs bg-violet-600 text-white px-3 py-1 rounded-lg hover:bg-violet-700 transition-colors font-medium"
                     >
                       Save
                     </button>
@@ -246,7 +246,7 @@ function EmailCard({
 }) {
   const isInbound  = msg.direction === 'inbound'
   const accentCls  = isInbound
-    ? (channelType === 'client' ? 'border-l-sky-400' : 'border-l-orange-400')
+    ? (channelType === 'client' ? 'border-l-blue-400' : 'border-l-slate-400')
     : 'border-l-violet-400'
 
   return (
@@ -321,9 +321,9 @@ function ThreadPanel({
   onAction: () => void
 }) {
   const panelCls   = channelType === 'client' ? 'glass-panel-client' : 'glass-panel-vendor'
-  const headerText = channelType === 'client' ? 'text-sky-700'    : 'text-orange-700'
-  const headerBg   = channelType === 'client' ? 'bg-sky-50/60'    : 'bg-orange-50/60'
-  const countCls   = channelType === 'client' ? 'bg-sky-100 text-sky-600' : 'bg-orange-100 text-orange-600'
+  const headerText = channelType === 'client' ? 'text-blue-700'   : 'text-slate-600'
+  const headerBg   = channelType === 'client' ? 'bg-blue-50/60'   : 'bg-slate-50/60'
+  const countCls   = channelType === 'client' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'
 
   // Last inbound message — for reply-to
   const lastInbound = [...messages].reverse().find(m => m.direction === 'inbound')
@@ -424,10 +424,10 @@ function CaseIntelPanel({
   const c = shipmentCase
 
   const TONE_COLORS = {
-    neutral:  'text-gray-600 bg-gray-100',
-    positive: 'text-green-700 bg-green-100',
-    tense:    'text-orange-700 bg-orange-100',
-    urgent:   'text-red-700 bg-red-100',
+    neutral:  'text-slate-600 bg-slate-100',
+    positive: 'text-teal-700 bg-teal-50',
+    tense:    'text-slate-700 bg-slate-200',
+    urgent:   'text-rose-700 bg-rose-50',
   }
 
   const facts = [
@@ -704,23 +704,23 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
 
 const STATUS_PILL: Record<string, string> = {
   new:               'bg-slate-100 text-slate-600',
-  vendor_requested:  'bg-sky-100 text-sky-700',
-  quote_received:    'bg-amber-100 text-amber-700',
+  vendor_requested:  'bg-blue-50 text-blue-700',
+  quote_received:    'bg-slate-100 text-slate-700',
   quote_sent:        'bg-indigo-100 text-indigo-700',
-  client_confirmed:  'bg-green-100 text-green-700',
-  vendor_confirmed:  'bg-teal-100 text-teal-700',
+  client_confirmed:  'bg-teal-50 text-teal-700',
+  vendor_confirmed:  'bg-slate-100 text-slate-700',
   label_received:    'bg-violet-100 text-violet-700',
-  booked:            'bg-emerald-100 text-emerald-700',
-  in_transit:        'bg-orange-100 text-orange-700',
-  delivered:         'bg-green-200 text-green-800',
+  booked:            'bg-indigo-100 text-indigo-700',
+  in_transit:        'bg-blue-100 text-blue-700',
+  delivered:         'bg-slate-200 text-slate-700',
   closed:            'bg-gray-100 text-gray-500',
 }
 
 const PRIORITY_DOT: Record<string, string> = {
-  urgent: 'bg-red-500 shadow-sm shadow-red-300',
-  high:   'bg-orange-400',
-  normal: 'bg-gray-300',
-  low:    'bg-gray-200',
+  urgent: 'bg-rose-500 shadow-sm shadow-rose-300',
+  high:   'bg-amber-500',
+  normal: 'bg-slate-400',
+  low:    'bg-slate-200',
 }
 
 function CaseMiniList({ currentRef }: { currentRef: string | null }) {

@@ -97,17 +97,17 @@ function ContactPane({
 
       {/* Needs review banner */}
       {contact?.needs_review && (
-        <div className="mx-4 mt-4 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
-          <AlertCircle size={15} className="text-amber-500 mt-0.5 flex-shrink-0" />
+        <div className="mx-4 mt-4 flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+          <AlertCircle size={15} className="text-slate-500 mt-0.5 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-amber-800">Needs Review</p>
-            <p className="text-xs text-amber-700 mt-0.5">
+            <p className="text-xs font-semibold text-slate-700">Needs Review</p>
+            <p className="text-xs text-slate-600 mt-0.5">
               Auto-created from an unrecognised email. Please verify the persona and details.
             </p>
           </div>
           <button
             onClick={markValidated}
-            className="text-xs bg-amber-500 text-white px-2.5 py-1 rounded-md hover:bg-amber-600 transition-colors flex-shrink-0"
+            className="text-xs bg-violet-600 text-white px-2.5 py-1 rounded-md hover:bg-violet-700 transition-colors flex-shrink-0"
           >
             Validate
           </button>
@@ -221,7 +221,7 @@ function ContactPane({
               <button
                 onClick={() => handlePromote('vendor')}
                 disabled={promoting !== null}
-                className="flex items-center gap-1.5 text-xs border border-orange-200 text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg hover:bg-orange-100 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 text-xs border border-slate-200 text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-colors"
               >
                 <Truck size={12} />
                 {promoting === 'vendor' ? 'Adding…' : 'Vendor'}
@@ -246,7 +246,7 @@ function ContactPane({
               </button>
             )}
             <button onClick={handleSave} disabled={saving}
-              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              className="flex items-center gap-1.5 text-xs bg-violet-600 text-white px-4 py-1.5 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors">
               <Save size={12} />
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -476,7 +476,7 @@ export default function CRMPage() {
             <h2 className="text-sm font-semibold text-gray-900">CRM</h2>
             {tab === 'contacts' && (
               <button onClick={() => { setSelected(null); setAddingNew(true) }}
-                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
+                className="flex items-center gap-1.5 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors">
                 <Plus size={13} /> Add contact
               </button>
             )}
@@ -495,7 +495,7 @@ export default function CRMPage() {
                 if (error) { toast.error(error.message); return }
                 toast.success('Client added'); loadClients(); loadContacts()
               }}
-                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
+                className="flex items-center gap-1.5 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors">
                 <Plus size={13} /> Add client
               </button>
             )}
@@ -513,7 +513,7 @@ export default function CRMPage() {
                 if (error) { toast.error(error.message); return }
                 toast.success('Vendor added'); loadVendors(); loadContacts()
               }}
-                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
+                className="flex items-center gap-1.5 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg hover:bg-violet-700 transition-colors">
                 <Plus size={13} /> Add vendor
               </button>
             )}
@@ -545,9 +545,9 @@ export default function CRMPage() {
         {/* Search */}
         <div className="px-4 py-3 border-b border-gray-100 space-y-2">
           {tab === 'contacts' && needsReview.length > 0 && (
-            <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              <AlertCircle size={13} className="text-amber-500 flex-shrink-0" />
-              <p className="text-xs text-amber-800">
+            <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              <AlertCircle size={13} className="text-slate-500 flex-shrink-0" />
+              <p className="text-xs text-slate-700">
                 <strong>{needsReview.length}</strong> contact{needsReview.length > 1 ? 's' : ''} need review
               </p>
             </div>
@@ -646,7 +646,7 @@ export default function CRMPage() {
                   onClick={() => setSelectedVendor(vendor)}
                   className={cn('w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors flex items-center gap-3',
                     selectedVendor?.id === vendor.id && 'bg-blue-50 border-l-2 border-l-blue-500')}>
-                  <div className="w-8 h-8 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">
                     {(vendor.name || vendor.email)[0]?.toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">

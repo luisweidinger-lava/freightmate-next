@@ -24,10 +24,10 @@ export function InlineCompose({
   const [sending,  setSending]  = useState(false)
   const [drafting, setDrafting] = useState(false)
 
-  const borderAccent = channelType === 'client' ? 'border-sky-400' : 'border-orange-400'
+  const borderAccent = channelType === 'client' ? 'border-blue-400' : 'border-slate-400'
   const sendBtnCls   = channelType === 'client'
-    ? 'bg-sky-500 hover:bg-sky-600 disabled:bg-sky-300'
-    : 'bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300'
+    ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300'
+    : 'bg-slate-600 hover:bg-slate-700 disabled:bg-slate-400'
 
   async function handleSend() {
     if (!body.trim()) return
@@ -41,6 +41,8 @@ export function InlineCompose({
           subject,
           body,
           replyToNylasMessageId,
+          case_id:    caseId,
+          channel_id: channelId ?? undefined,
         }),
       })
       if (res.ok) {
@@ -59,12 +61,19 @@ export function InlineCompose({
   async function handleGenerateDraft() {
     setDrafting(true)
     try {
-      await fetch('/api/request-draft', {
+      const res = await fetch('/api/request-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ case_id: caseId, channel_type: channelType, channel_id: channelId }),
       })
-      toast.success('AI draft requested — check back in ~60s')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(`Draft request failed: ${data.error ?? res.statusText}`)
+      } else {
+        toast.success('AI draft requested — check back in ~60s')
+      }
+    } catch (err) {
+      toast.error(`Draft request failed: ${String(err)}`)
     } finally {
       setDrafting(false)
     }
