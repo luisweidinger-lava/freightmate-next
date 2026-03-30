@@ -1,4 +1,4 @@
-# FreightMate — System Architecture Flowchart Guide
+# FreightMate — System Architecture Flowchart
 
 This document describes the complete FreightMate system architecture in enough detail to e.g. manually recreate it as a MURAL flowchart. It covers every component, how they connect, and what data flows between them.
 
