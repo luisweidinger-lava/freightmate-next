@@ -8,7 +8,7 @@ import { formatDate, formatRef, extractTextPreview } from '@/lib/utils'
 import {
   Mail, Star, AlertTriangle, Paperclip, Briefcase,
   Search, Link2, Plus, Trash2, AlertOctagon, X,
-  Reply, ReplyAll, Forward, Edit3, RefreshCw,
+  Reply, ReplyAll, Forward, Edit3, RefreshCw, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -238,6 +238,32 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
   )
 }
 
+// ─── Collapsed thread bar (conversation view) ─────────────────────────────────
+
+function ThreadBar({ msg, onExpand }: { msg: EmailMessage; onExpand: () => void }) {
+  const isOutbound = msg.direction === 'outbound'
+  return (
+    <button
+      onClick={onExpand}
+      className="w-full flex items-center gap-3 px-5 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left group"
+    >
+      <span className={cn(
+        'text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0',
+        isOutbound ? 'bg-violet-50 text-violet-600' : 'bg-blue-50 text-blue-600',
+      )}>
+        {isOutbound ? 'You' : (msg.sender_email?.split('@')[0] || 'Unknown')}
+      </span>
+      <span className="text-xs text-gray-500 truncate flex-1 min-w-0">
+        {msg.body_preview || msg.subject || '(no content)'}
+      </span>
+      <span className="text-[11px] text-gray-400 flex-shrink-0">
+        {new Date(msg.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+      </span>
+      <ChevronDown size={13} className="text-gray-300 group-hover:text-gray-400 flex-shrink-0 transition-colors" />
+    </button>
+  )
+}
+
 // ─── Email detail pane ────────────────────────────────────────────────────────
 
 function MailDetail({
@@ -247,6 +273,38 @@ function MailDetail({
 }) {
   const router = useRouter()
   const [compose, setCompose] = useState<{ mode: ComposeMode } | null>(null)
+  const [thread, setThread]   = useState<EmailMessage[]>([])
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  // Load conversation thread
+  useEffect(() => {
+    async function loadThread() {
+      if (email.nylas_thread_id) {
+        const { data } = await supabase
+          .from('email_messages')
+          .select('*')
+          .eq('nylas_thread_id', email.nylas_thread_id)
+          .order('created_at', { ascending: true })
+        const msgs = (data || []) as EmailMessage[]
+        setThread(msgs.length > 1 ? msgs : [])
+        // Latest message always expanded
+        if (msgs.length > 0) {
+          setExpandedIds(new Set([msgs[msgs.length - 1].id]))
+        }
+      } else {
+        setThread([])
+      }
+    }
+    loadThread()
+  }, [email.id, email.nylas_thread_id])
+
+  function toggleExpand(id: string) {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   async function toggleStar() {
     await supabase.from('email_messages').update({ is_starred: !email.is_starred }).eq('id', email.id)
@@ -264,12 +322,15 @@ function MailDetail({
   }
 
   const isUnmatched = !email.case_id
+  // Use thread if loaded, otherwise fall back to single email
+  const displayThread = thread.length > 1 ? thread : null
+  const latestMsg = displayThread ? displayThread[displayThread.length - 1] : email
 
   return (
     <div className="flex flex-col h-full bg-white">
 
-      {/* Subject header */}
-      <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 gap-3">
+      {/* Subject + close */}
+      <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 gap-3 flex-shrink-0">
         <h3 className="text-sm font-semibold text-gray-900 leading-snug flex-1">
           {email.subject || '(no subject)'}
         </h3>
@@ -278,98 +339,34 @@ function MailDetail({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-
-        {/* Metadata + case action */}
-        <div className="px-6 py-4 border-b border-gray-100 space-y-2.5">
-          {/* From / To / CC */}
-          <div className="space-y-1.5">
-            {[
-              { label: 'From', value: email.sender_email },
-              { label: 'To',   value: email.recipient_email },
-              ...(email.cc?.length ? [{ label: 'CC', value: email.cc.join(', ') }] : []),
-              { label: 'Date', value: new Date(email.created_at).toLocaleString('en-GB', {
-                  day: 'numeric', month: 'short', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit'
-                })
-              },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex items-baseline gap-3 text-xs">
-                <span className="text-gray-400 w-8 flex-shrink-0">{label}</span>
-                <span className="text-gray-700 min-w-0 break-all">{value}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Case action bar */}
-          {email.case_id ? (
-            <div className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="w-2 h-2 rounded-full bg-teal-500" />
-                <span className="text-teal-700 font-medium">Linked to case</span>
-              </div>
-              <button
-                onClick={() => router.push(`/cases/${email.case_id}`)}
-                className="flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-900 font-semibold transition-colors"
-              >
-                <Briefcase size={12} />
-                Open in Workbench
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-              <AlertTriangle size={13} className="text-slate-500 flex-shrink-0" />
-              <span className="text-xs text-slate-700 font-medium">Unmatched — not linked to any case</span>
-            </div>
-          )}
-
-          {/* Attachment indicator */}
-          {email.has_attachments && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Paperclip size={12} /> Has attachments
-            </div>
-          )}
-        </div>
-
-        {/* Email body */}
-        <div className="px-6 py-5">
-          <MailBodyRenderer body={email.body_text} preview={email.body_preview} />
-        </div>
-
-        {/* Triage panel (unmatched only) */}
-        {isUnmatched && <TriagePanel email={email} onDone={onAction} />}
-      </div>
-
-      {/* Bottom action bar */}
-      <div className="px-6 py-3 border-t border-gray-100 flex items-center gap-1.5 bg-white flex-wrap">
+      {/* Action toolbar — Outlook style, at top */}
+      <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-1 bg-gray-50/60 flex-shrink-0 flex-wrap">
         <button
           onClick={() => setCompose({ mode: 'reply' })}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 rounded-lg px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors font-medium"
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-700 bg-white rounded-md px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors font-medium shadow-sm"
         >
           <Reply size={12} /> Reply
         </button>
         <button
           onClick={() => setCompose({ mode: 'replyAll' })}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 bg-white rounded-md px-3 py-1.5 hover:bg-gray-100 transition-colors shadow-sm"
         >
           <ReplyAll size={12} /> Reply all
         </button>
         <button
           onClick={() => setCompose({ mode: 'forward' })}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 bg-white rounded-md px-3 py-1.5 hover:bg-gray-100 transition-colors shadow-sm"
         >
           <Forward size={12} /> Forward
         </button>
-
-        <div className="w-px h-4 bg-gray-200 mx-1" />
-
+        <div className="w-px h-4 bg-gray-200 mx-0.5" />
         <button
           onClick={toggleStar}
           className={cn(
-            'flex items-center gap-1.5 text-xs border rounded-lg px-3 py-1.5 transition-colors',
+            'flex items-center gap-1.5 text-xs border rounded-md px-3 py-1.5 transition-colors shadow-sm',
             email.is_starred
-              ? 'border-slate-300 text-slate-600 bg-slate-50 hover:bg-slate-100'
-              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              ? 'border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100'
+              : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-100',
           )}
         >
           <Star size={12} fill={email.is_starred ? 'currentColor' : 'none'} />
@@ -377,22 +374,125 @@ function MailDetail({
         </button>
         <button
           onClick={markSpam}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 bg-white rounded-md px-3 py-1.5 hover:bg-gray-100 transition-colors shadow-sm"
         >
           <AlertOctagon size={12} /> Spam
         </button>
         <button
           onClick={moveToBin}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-red-50 hover:text-red-600 transition-colors"
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 bg-white rounded-md px-3 py-1.5 hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm"
         >
           <Trash2 size={12} /> Bin
         </button>
+        {email.case_id && (
+          <>
+            <div className="w-px h-4 bg-gray-200 mx-0.5" />
+            <button
+              onClick={() => router.push(`/cases/${email.case_id}`)}
+              className="flex items-center gap-1.5 text-xs border border-teal-200 text-teal-700 bg-teal-50 rounded-md px-3 py-1.5 hover:bg-teal-100 transition-colors shadow-sm font-medium"
+            >
+              <Briefcase size={12} /> Open in Workbench
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-h-0">
+
+        {/* Conversation thread — older messages collapsed */}
+        {displayThread ? (
+          <div>
+            {displayThread.map((msg, idx) => {
+              const isLatest = idx === displayThread.length - 1
+              const isExpanded = expandedIds.has(msg.id)
+
+              if (!isLatest && !isExpanded) {
+                return <ThreadBar key={msg.id} msg={msg} onExpand={() => toggleExpand(msg.id)} />
+              }
+
+              return (
+                <div key={msg.id} className="border-b border-gray-100">
+                  {/* Expanded header */}
+                  <div
+                    className={cn(
+                      'px-6 pt-4 pb-3 bg-gray-50',
+                      !isLatest && 'cursor-pointer hover:bg-gray-100'
+                    )}
+                    onClick={!isLatest ? () => toggleExpand(msg.id) : undefined}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <p className="text-xs font-semibold text-gray-800 flex-1">{msg.subject || '(no subject)'}</p>
+                      {!isLatest && (
+                        <ChevronUp size={13} className="text-gray-400 flex-shrink-0 mt-0.5" />
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      {[
+                        { label: 'From', value: msg.sender_email },
+                        { label: 'To',   value: msg.recipient_email },
+                        ...(msg.cc?.length ? [{ label: 'CC', value: msg.cc.join(', ') }] : []),
+                        { label: 'Date', value: new Date(msg.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex items-baseline gap-3 text-xs">
+                          <span className="text-gray-400 w-8 flex-shrink-0">{label}</span>
+                          <span className="text-gray-600 min-w-0 truncate">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="px-6 py-4">
+                    <MailBodyRenderer body={msg.body_text} preview={msg.body_preview} />
+                    {msg.has_attachments && (
+                      <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-400">
+                        <Paperclip size={11} /> Attachment
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          /* Single email view */
+          <div>
+            <div className="px-6 py-4 border-b border-gray-100 space-y-1.5">
+              {[
+                { label: 'From', value: email.sender_email },
+                { label: 'To',   value: email.recipient_email },
+                ...(email.cc?.length ? [{ label: 'CC', value: email.cc.join(', ') }] : []),
+                { label: 'Date', value: new Date(email.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-baseline gap-3 text-xs">
+                  <span className="text-gray-400 w-8 flex-shrink-0">{label}</span>
+                  <span className="text-gray-700 min-w-0 break-all">{value}</span>
+                </div>
+              ))}
+              {!email.case_id && (
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mt-2">
+                  <AlertTriangle size={13} className="text-slate-500 flex-shrink-0" />
+                  <span className="text-xs text-slate-700 font-medium">Unmatched — not linked to any case</span>
+                </div>
+              )}
+              {email.has_attachments && (
+                <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
+                  <Paperclip size={12} /> Has attachments
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-5">
+              <MailBodyRenderer body={email.body_text} preview={email.body_preview} />
+            </div>
+          </div>
+        )}
+
+        {/* Triage panel (unmatched only) */}
+        {isUnmatched && <TriagePanel email={email} onDone={onAction} />}
       </div>
 
       {compose && (
         <ComposePanel
           mode={compose.mode}
-          replyTo={email}
+          replyTo={latestMsg}
           onClose={() => setCompose(null)}
         />
       )}

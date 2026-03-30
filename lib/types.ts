@@ -223,6 +223,7 @@ export interface Vendor {
   default_mode: string
   is_active:    boolean
   created_at:   string
+  contacts?:    { display_name: string | null } | null
 }
 
 export interface Client {

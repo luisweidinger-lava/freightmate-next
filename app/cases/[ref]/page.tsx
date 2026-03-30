@@ -8,10 +8,10 @@ import {
 } from '@/lib/types'
 import { formatDate, formatRef } from '@/lib/utils'
 import {
-  ChevronLeft, RefreshCw, Sparkles, Send, X,
-  Edit3, RotateCcw, Check, AlertCircle, Paperclip,
-  StickyNote, ArrowDownLeft, ArrowUpRight,
+  ChevronLeft, ChevronDown, ChevronUp, RefreshCw, Sparkles, Send, X,
+  Edit3, RotateCcw, Check, AlertCircle, Paperclip, StickyNote,
 } from 'lucide-react'
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -236,64 +236,112 @@ function DraftCard({
   )
 }
 
-// ─── Outlook-style email message card ─────────────────────────────────────────
+// ─── Outlook-style email message card (collapsible) ───────────────────────────
+
+function personaChip(direction: string, channelType: 'client' | 'vendor') {
+  if (direction === 'outbound') return { label: 'You', cls: 'bg-violet-50 text-violet-600' }
+  if (channelType === 'client')  return { label: 'Client', cls: 'bg-blue-50 text-blue-600' }
+  return { label: 'Vendor', cls: 'bg-slate-100 text-slate-600' }
+}
+
+function formatMsgDate(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
 
 function EmailCard({
-  msg, channelType,
+  msg, channelType, defaultCollapsed = false,
 }: {
   msg: EmailMessage
   channelType: 'client' | 'vendor'
+  defaultCollapsed?: boolean
 }) {
-  const isInbound  = msg.direction === 'inbound'
-  const accentCls  = isInbound
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+  const isInbound = msg.direction === 'inbound'
+  const accentCls = isInbound
     ? (channelType === 'client' ? 'border-l-blue-400' : 'border-l-slate-400')
     : 'border-l-violet-400'
+  const chip = personaChip(msg.direction, channelType)
+  const senderLabel = isInbound ? (msg.sender_email || '—') : 'You'
+
+  if (collapsed) {
+    return (
+      <button
+        onClick={() => setCollapsed(false)}
+        className={cn(
+          'w-full flex items-center gap-3 px-3.5 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition-all text-left group border-l-[3px]',
+          accentCls,
+        )}
+      >
+        <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0', chip.cls)}>
+          {chip.label}
+        </span>
+        <span className="text-xs font-medium text-gray-700 flex-shrink-0">{senderLabel}</span>
+        <span className="text-xs text-gray-400 truncate flex-1 min-w-0">
+          {msg.subject || msg.body_preview || '(no subject)'}
+        </span>
+        <span className="text-[11px] text-gray-400 flex-shrink-0">
+          {new Date(msg.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <ChevronDown size={13} className="text-gray-300 flex-shrink-0 group-hover:text-gray-400 transition-colors" />
+      </button>
+    )
+  }
 
   return (
     <div className={cn(
-      'rounded-xl border border-white/80 bg-white/65 backdrop-blur-sm overflow-hidden border-l-[3px] transition-shadow hover:shadow-md',
+      'rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden border-l-[3px] transition-shadow hover:shadow-md',
       accentCls,
     )}>
-      {/* Email header — Outlook style */}
-      <div className="px-4 py-3 bg-white/40 border-b border-gray-100/80">
-        <div className="flex items-start justify-between gap-3 mb-1">
-          <div className="grid grid-cols-[28px_1fr] gap-x-2 gap-y-0.5 flex-1 min-w-0">
-            <span className="text-[11px] text-gray-400 font-medium self-start pt-px">From</span>
-            <span className="text-xs text-gray-700 font-medium truncate">
-              {isInbound
-                ? (msg.sender_email || '—')
-                : `You <${msg.sender_email || 'freightmate58@gmail.com'}>`}
+      {/* Email header */}
+      <div className="px-4 pt-3 pb-2.5 bg-gray-50 border-b border-gray-100">
+        {/* Subject */}
+        <div className="flex items-start justify-between gap-2 mb-2.5">
+          <p className="text-[13px] font-semibold text-gray-900 leading-snug flex-1 min-w-0">
+            {msg.subject || '(no subject)'}
+          </p>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', chip.cls)}>
+              {chip.label}
             </span>
-
-            <span className="text-[11px] text-gray-400 font-medium self-start pt-px">To</span>
-            <span className="text-xs text-gray-500 truncate">
-              {msg.recipient_email || '—'}
-            </span>
-
-            <span className="text-[11px] text-gray-400 font-medium self-start pt-px">Date</span>
-            <span className="text-[11px] text-gray-400">
-              {new Date(msg.created_at).toLocaleString('en-GB', {
-                weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-                hour: '2-digit', minute: '2-digit',
-              })}
-            </span>
+            <button
+              onClick={() => setCollapsed(true)}
+              className="text-gray-300 hover:text-gray-500 transition-colors"
+              title="Collapse"
+            >
+              <ChevronUp size={13} />
+            </button>
           </div>
+        </div>
 
-          {/* Direction badge */}
-          <div className={cn(
-            'flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full flex-shrink-0',
-            isInbound
-              ? 'bg-sky-50 text-sky-600'
-              : 'bg-violet-50 text-violet-600',
-          )}>
-            {isInbound ? <ArrowDownLeft size={10} /> : <ArrowUpRight size={10} />}
-            {isInbound ? 'Received' : 'Sent'}
-          </div>
+        {/* Metadata grid */}
+        <div className="grid grid-cols-[28px_1fr] gap-x-2 gap-y-0.5">
+          <span className="text-[11px] text-gray-400 font-medium self-start pt-px">From</span>
+          <span className="text-xs text-gray-700 font-medium truncate">
+            {isInbound ? (msg.sender_email || '—') : `freightmate58@gmail.com`}
+          </span>
+
+          <span className="text-[11px] text-gray-400 font-medium self-start pt-px">To</span>
+          <span className="text-xs text-gray-500 truncate">
+            {msg.recipient_email || '—'}
+          </span>
+
+          {msg.cc && msg.cc.length > 0 && (
+            <>
+              <span className="text-[11px] text-gray-400 font-medium self-start pt-px">CC</span>
+              <span className="text-xs text-gray-500 truncate">{msg.cc.join(', ')}</span>
+            </>
+          )}
+
+          <span className="text-[11px] text-gray-400 font-medium self-start pt-px">Date</span>
+          <span className="text-[11px] text-gray-400">{formatMsgDate(msg.created_at)}</span>
         </div>
       </div>
 
       {/* Email body */}
-      <div className="px-4 py-3">
+      <div className="px-4 py-3 bg-white">
         <MailBodyRenderer body={msg.body_text} preview={msg.body_preview} />
         {msg.has_attachments && (
           <div className="flex items-center gap-1 mt-2.5 text-xs text-gray-400">
@@ -375,12 +423,17 @@ function ThreadPanel({
       </div>
 
       {/* Scrollable email thread */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-0">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
         {messages.length === 0 && drafts.length === 0 && (
           <p className="text-xs text-gray-300 text-center py-10">No messages yet</p>
         )}
-        {[...messages].map(msg => (
-          <EmailCard key={msg.id} msg={msg} channelType={channelType} />
+        {messages.map((msg, idx) => (
+          <EmailCard
+            key={msg.id}
+            msg={msg}
+            channelType={channelType}
+            defaultCollapsed={idx < messages.length - 1}
+          />
         ))}
       </div>
 
@@ -651,51 +704,72 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
         </button>
       </div>
 
-      {/* 4-column workbench — the USP */}
-      <div className="flex-1 overflow-hidden grid grid-cols-4 gap-3 p-3">
+      {/* 4-column workbench — resizable */}
+      <PanelGroup direction="horizontal" autoSaveId="workbench-panels" className="flex-1 overflow-hidden p-3 gap-0">
 
         {/* Col 1: Active cases list */}
-        <div className="flex flex-col glass-panel rounded-xl overflow-hidden">
-          <div className="px-3 py-2.5 border-b border-white/60 bg-white/30 flex-shrink-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 font-display">
-              Active Cases
-            </p>
+        <Panel defaultSize={18} minSize={12}>
+          <div className="h-full flex flex-col glass-panel rounded-xl overflow-hidden">
+            <div className="px-3 py-2.5 border-b border-white/60 bg-white/30 flex-shrink-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 font-display">
+                Active Cases
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <CaseMiniList currentRef={shipmentCase.ref_number} />
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <CaseMiniList currentRef={shipmentCase.ref_number} />
-          </div>
-        </div>
+        </Panel>
+
+        <PanelResizeHandle className="w-2.5 flex items-center justify-center group cursor-col-resize">
+          <div className="w-0.5 h-10 rounded-full bg-white/50 group-hover:bg-violet-400 group-active:bg-violet-500 transition-colors" />
+        </PanelResizeHandle>
 
         {/* Col 2: Client thread */}
-        <ThreadPanel
-          title="Client Thread"
-          channelType="client"
-          messages={clientMsgs}
-          drafts={clientDrafts}
-          caseId={shipmentCase.id}
-          channelId={clientChannel?.id ?? null}
-          partyEmail={clientChannel?.party_email ?? shipmentCase.client_email ?? ''}
-          onAction={load}
-        />
+        <Panel defaultSize={28} minSize={16}>
+          <ThreadPanel
+            title="Client Thread"
+            channelType="client"
+            messages={clientMsgs}
+            drafts={clientDrafts}
+            caseId={shipmentCase.id}
+            channelId={clientChannel?.id ?? null}
+            partyEmail={clientChannel?.party_email ?? shipmentCase.client_email ?? ''}
+            onAction={load}
+          />
+        </Panel>
+
+        <PanelResizeHandle className="w-2.5 flex items-center justify-center group cursor-col-resize">
+          <div className="w-0.5 h-10 rounded-full bg-white/50 group-hover:bg-violet-400 group-active:bg-violet-500 transition-colors" />
+        </PanelResizeHandle>
 
         {/* Col 3: Vendor thread */}
-        <ThreadPanel
-          title="Vendor Thread"
-          channelType="vendor"
-          messages={vendorMsgs}
-          drafts={vendorDrafts}
-          caseId={shipmentCase.id}
-          channelId={vendorChannel?.id ?? null}
-          partyEmail={vendorChannel?.party_email ?? ''}
-          onAction={load}
-        />
+        <Panel defaultSize={28} minSize={16}>
+          <ThreadPanel
+            title="Vendor Thread"
+            channelType="vendor"
+            messages={vendorMsgs}
+            drafts={vendorDrafts}
+            caseId={shipmentCase.id}
+            channelId={vendorChannel?.id ?? null}
+            partyEmail={vendorChannel?.party_email ?? ''}
+            onAction={load}
+          />
+        </Panel>
+
+        <PanelResizeHandle className="w-2.5 flex items-center justify-center group cursor-col-resize">
+          <div className="w-0.5 h-10 rounded-full bg-white/50 group-hover:bg-violet-400 group-active:bg-violet-500 transition-colors" />
+        </PanelResizeHandle>
 
         {/* Col 4: Job Status + Intel */}
-        <CaseIntelPanel
-          shipmentCase={shipmentCase}
-          summary={summary}
-        />
-      </div>
+        <Panel defaultSize={26} minSize={16}>
+          <CaseIntelPanel
+            shipmentCase={shipmentCase}
+            summary={summary}
+          />
+        </Panel>
+
+      </PanelGroup>
     </div>
   )
 }
