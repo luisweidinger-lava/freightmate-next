@@ -42,7 +42,7 @@ Vertical connector arrows between rows show data flowing up and down.
 
 **Nylas Email Infrastructure**
 - Region: EU (`api.eu.nylas.com`)
-- Grant ID: `0d720d76-fc61-4d5a-a99a-5961a35ba54e`
+- Grant ID: `xxx`
 - Responsibilities:
   - Receives Gmail events via webhook and pushes them to n8n WF1
   - Sends outbound emails on behalf of FreightMate (WF6 + manual sends)
