@@ -1,18 +1,18 @@
 # FreightMate — System Architecture Flowchart Guide
 
-This document describes the complete FreightMate system architecture in enough detail to manually recreate it as a MURAL flowchart. It covers every component, how they connect, and what data flows between them.
+This document describes the complete FreightMate system architecture in enough detail to e.g. manually recreate it as a MURAL flowchart. It covers every component, how they connect, and what data flows between them.
 
 ---
 
-## Recommended Board Layout
+## Board Layout
 
-Arrange the board in **three horizontal rows** from top to bottom:
+Flowchart board is arranged in **three horizontal rows** from top to bottom:
 
 1. **Top row** — External world, email infrastructure, n8n automation, AI services
 2. **Middle row** — Supabase database (the central hub everything reads/writes)
 3. **Bottom row** — Next.js web application deployed on Vercel
 
-Use vertical connector arrows between rows to show data flowing up and down.
+Vertical connector arrows between rows show data flowing up and down.
 
 ---
 
