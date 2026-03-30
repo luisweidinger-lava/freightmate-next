@@ -4,6 +4,11 @@
  *
  * Seeds exactly ONE fully operational case: Ref 123456
  * All existing mock data is deleted first.
+ *
+ * NOTE: No fake email_messages are seeded. Real emails populate via the Sync
+ * button once actual Gmail messages are exchanged between the 3 accounts.
+ * Seeding fake nylas_message_id values caused ghost data that persisted
+ * alongside real emails and could not be overwritten by sync.
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -32,17 +37,6 @@ const IDS = {
   draft:           'ffffffff-0001-eeee-0000-000000000001',
   summary_client:  'bbbbbbbb-0001-cc00-0000-000000000001',
   summary_vendor:  'bbbbbbbb-0001-dd00-0000-000000000001',
-}
-
-// Email message IDs — stable so upsert is idempotent (valid UUIDs)
-const MSG = {
-  c1: 'a0000001-c100-0000-1234-560000000001',
-  c2: 'a0000002-c200-0000-1234-560000000001',
-  c3: 'a0000003-c300-0000-1234-560000000001',
-  c4: 'a0000004-c400-0000-1234-560000000001',
-  c5: 'a0000005-c500-0000-1234-560000000001',
-  v1: 'a0000006-b100-0000-1234-560000000001',
-  v2: 'a0000007-b200-0000-1234-560000000001',
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -95,6 +89,8 @@ async function cleanup() {
 
 async function seed() {
   console.log('\n🌱 Seeding Case Ref 123456...\n')
+
+  const flightDate = daysFromNow(3)
 
   // ── Mailbox ──────────────────────────────────────────────────────────────────
   await upsert('mailboxes', [{
@@ -165,21 +161,23 @@ async function seed() {
     rate_amount:   3200,
     rate_currency: 'EUR',
     transit_days:  5,
-    flight_date:   daysFromNow(3),
+    flight_date:   flightDate,
     created_at:    daysAgo(5),
     updated_at:    daysAgo(1),
   }])
 
   // ── Case channels ─────────────────────────────────────────────────────────────
+  // nylas_thread_id is intentionally left as a placeholder — it will be updated
+  // by WF1 when real Gmail threads are matched to this case.
   await upsert('case_channels', [
     {
       id:              IDS.channel_client,
       case_id:         IDS.case,
       channel_type:    'client',
       party_email:     'freightmate57@gmail.com',
-      nylas_thread_id: 'thread-123456-client',
+      nylas_thread_id: null,
       cc_emails:       [],
-      message_count:   5,
+      message_count:   0,
       created_at:      daysAgo(5),
     },
     {
@@ -187,281 +185,11 @@ async function seed() {
       case_id:         IDS.case,
       channel_type:    'vendor',
       party_email:     'freightmate59@gmail.com',
-      nylas_thread_id: 'thread-123456-vendor',
+      nylas_thread_id: null,
       cc_emails:       [],
-      message_count:   2,
+      message_count:   0,
       created_at:      daysAgo(4),
     },
-  ])
-
-  // ── Email messages ─────────────────────────────────────────────────────────────
-  const flightDate = daysFromNow(3)
-
-  await upsert('email_messages', [
-
-    // ── Client channel: 5 messages ──────────────────────────────────────────────
-
-    // 1. Client enquiry (inbound, Day -5)
-    {
-      id:                MSG.c1,
-      case_id:           IDS.case,
-      channel_id:        IDS.channel_client,
-      mailbox_id:        IDS.mailbox,
-      direction:         'inbound',
-      folder:            'inbox',
-      sender_email:      'freightmate57@gmail.com',
-      sender_persona:    'client',
-      recipient_email:   'freightmate58@gmail.com',
-      subject:           'Urgent freight request — FRA → ORD, Ref 123456',
-      body_text:         `Dear FreightMate,
-
-I hope this message finds you well.
-
-We urgently need to arrange air freight for the following shipment:
-
-• Origin: Frankfurt Airport (FRA), Germany
-• Destination: Chicago O'Hare (ORD), USA
-• Commodity: Precision measurement instruments
-• Weight: 285 kg
-• Dimensions: 110 × 70 × 55 cm
-• Required delivery: within 10 days
-
-These instruments are needed for a production calibration at our Chicago facility. Any delay will impact the production schedule.
-
-Please advise on the earliest available routing and your best rate.
-
-Best regards,
-Sarah Mitchell
-Hartmann Logistics GmbH`,
-      body_preview:      'We urgently need to arrange air freight — FRA to ORD, 285kg precision instruments, delivery within 10 days.',
-      cc:                null,
-      nylas_message_id:  MSG.c1,
-      nylas_thread_id:   'thread-123456-client',
-      is_read:           true,
-      is_starred:        false,
-      has_attachments:   false,
-      is_processed:      true,
-      created_at:        daysAgo(5),
-    },
-
-    // 2. Coordinator acknowledgement (outbound, Day -4)
-    {
-      id:                MSG.c2,
-      case_id:           IDS.case,
-      channel_id:        IDS.channel_client,
-      mailbox_id:        IDS.mailbox,
-      direction:         'outbound',
-      folder:            'sent',
-      sender_email:      'freightmate58@gmail.com',
-      sender_persona:    'coordinator',
-      recipient_email:   'freightmate57@gmail.com',
-      subject:           'Re: Urgent freight request — FRA → ORD, Ref 123456',
-      body_text:         `Dear Sarah,
-
-Thank you for reaching out. We have registered your request under reference 123456.
-
-We are immediately reaching out to our carrier partners to secure the best available routing and rate for FRA → ORD. Given the timeline, we will prioritise this.
-
-Could you please confirm: are there any hazardous materials or special handling requirements for these instruments?
-
-We will revert with a full quote within 24 hours.
-
-Best regards,
-FreightMate Operations`,
-      body_preview:      'Thank you. We have registered your request (Ref 123456) and are sourcing rates. Will revert within 24h.',
-      cc:                null,
-      nylas_message_id:  MSG.c2,
-      nylas_thread_id:   'thread-123456-client',
-      is_read:           true,
-      is_starred:        false,
-      has_attachments:   false,
-      is_processed:      true,
-      created_at:        daysAgo(4),
-    },
-
-    // 3. Client confirms no hazmat (inbound, Day -4, later)
-    {
-      id:                MSG.c3,
-      case_id:           IDS.case,
-      channel_id:        IDS.channel_client,
-      mailbox_id:        IDS.mailbox,
-      direction:         'inbound',
-      folder:            'inbox',
-      sender_email:      'freightmate57@gmail.com',
-      sender_persona:    'client',
-      recipient_email:   'freightmate58@gmail.com',
-      subject:           'Re: Urgent freight request — FRA → ORD, Ref 123456',
-      body_text:         `Hi,
-
-No hazardous materials. These are standard electronic measuring instruments — no lithium batteries, no restrictions.
-
-Please do expedite. Our production window is narrow and we really need this to move.
-
-Thanks,
-Sarah`,
-      body_preview:      'No hazardous materials — standard electronic instruments. Please expedite.',
-      cc:                null,
-      nylas_message_id:  MSG.c3,
-      nylas_thread_id:   'thread-123456-client',
-      is_read:           true,
-      is_starred:        false,
-      has_attachments:   false,
-      is_processed:      true,
-      created_at:        daysAgo(4),
-    },
-
-    // 4. Coordinator forwards quote (outbound, Day -2)
-    {
-      id:                MSG.c4,
-      case_id:           IDS.case,
-      channel_id:        IDS.channel_client,
-      mailbox_id:        IDS.mailbox,
-      direction:         'outbound',
-      folder:            'sent',
-      sender_email:      'freightmate58@gmail.com',
-      sender_persona:    'coordinator',
-      recipient_email:   'freightmate57@gmail.com',
-      subject:           'Re: Urgent freight request — FRA → ORD, Ref 123456',
-      body_text:         `Dear Sarah,
-
-We have obtained a quote from our carrier partner Apex Cargo GmbH for your shipment:
-
-• Route: Frankfurt (FRA) → Chicago O'Hare (ORD) via LH8400
-• Rate: EUR 3,200 all-in (freight + fuel + security surcharge)
-• Transit time: 5 business days
-• Estimated departure: ${flightDate}
-• Estimated arrival: within 5 days of departure
-
-Space on this flight is limited. To secure the booking, we would need your confirmation today.
-
-Please reply with your approval and we will immediately issue the booking confirmation to the carrier.
-
-Best regards,
-FreightMate Operations`,
-      body_preview:      'Quote from Apex Cargo: EUR 3,200 all-in, 5 days transit, flight LH8400. Please confirm to secure space.',
-      cc:                null,
-      nylas_message_id:  MSG.c4,
-      nylas_thread_id:   'thread-123456-client',
-      is_read:           true,
-      is_starred:        false,
-      has_attachments:   false,
-      is_processed:      true,
-      created_at:        daysAgo(2),
-    },
-
-    // 5. Client accepts (inbound, Day -1) — handover point
-    {
-      id:                MSG.c5,
-      case_id:           IDS.case,
-      channel_id:        IDS.channel_client,
-      mailbox_id:        IDS.mailbox,
-      direction:         'inbound',
-      folder:            'inbox',
-      sender_email:      'freightmate57@gmail.com',
-      sender_persona:    'client',
-      recipient_email:   'freightmate58@gmail.com',
-      subject:           'Re: Urgent freight request — FRA → ORD, Ref 123456',
-      body_text:         `Hi,
-
-Approved. Please proceed with the booking on LH8400.
-
-For invoicing purposes, please address the invoice to:
-Hartmann Logistics GmbH
-Accounts Payable: accounts@hartmann-logistics.de
-VAT: DE 123 456 789
-
-Looking forward to your booking confirmation.
-
-Best,
-Sarah Mitchell`,
-      body_preview:      'Approved. Please proceed with LH8400 booking. Invoice to accounts@hartmann-logistics.de.',
-      cc:                null,
-      nylas_message_id:  MSG.c5,
-      nylas_thread_id:   'thread-123456-client',
-      is_read:           false,
-      is_starred:        true,
-      has_attachments:   false,
-      is_processed:      true,
-      created_at:        daysAgo(1),
-    },
-
-    // ── Vendor channel: 2 messages ──────────────────────────────────────────────
-
-    // 6. Rate request to vendor (outbound, Day -4)
-    {
-      id:                MSG.v1,
-      case_id:           IDS.case,
-      channel_id:        IDS.channel_vendor,
-      mailbox_id:        IDS.mailbox,
-      direction:         'outbound',
-      folder:            'sent',
-      sender_email:      'freightmate58@gmail.com',
-      sender_persona:    'coordinator',
-      recipient_email:   'freightmate59@gmail.com',
-      subject:           'Rate request — FRA → ORD, 285kg, Ref 123456',
-      body_text:         `Hi Klaus,
-
-Please provide a rate for the following urgent shipment:
-
-• Route: Frankfurt (FRA) → Chicago O'Hare (ORD)
-• Commodity: Precision measurement instruments (no hazmat)
-• Weight: 285 kg
-• Dimensions: 110 × 70 × 55 cm
-• Required departure: within 4 days
-
-Please quote all-in and advise available departure dates.
-
-Many thanks,
-FreightMate Operations`,
-      body_preview:      'Rate request: FRA → ORD, 285kg precision instruments, departure within 4 days. Please quote all-in.',
-      cc:                null,
-      nylas_message_id:  MSG.v1,
-      nylas_thread_id:   'thread-123456-vendor',
-      is_read:           true,
-      is_starred:        false,
-      has_attachments:   false,
-      is_processed:      true,
-      created_at:        daysAgo(4),
-    },
-
-    // 7. Vendor quote (inbound, Day -3)
-    {
-      id:                MSG.v2,
-      case_id:           IDS.case,
-      channel_id:        IDS.channel_vendor,
-      mailbox_id:        IDS.mailbox,
-      direction:         'inbound',
-      folder:            'inbox',
-      sender_email:      'freightmate59@gmail.com',
-      sender_persona:    'vendor',
-      recipient_email:   'freightmate58@gmail.com',
-      subject:           'Re: Rate request — FRA → ORD, 285kg, Ref 123456',
-      body_text:         `Hello,
-
-Thank you for the enquiry. We can offer the following:
-
-• Route: FRA → ORD via LH8400 (Lufthansa Cargo)
-• Rate: EUR 3,200 all-in (includes freight, fuel surcharge, security fee)
-• Transit time: 5 business days door-to-door
-• Available departure: ${flightDate}
-• Space: available, but recommend confirming by tomorrow
-
-Please confirm at your earliest convenience to secure the allocation.
-
-Best regards,
-Klaus Weber
-Apex Cargo GmbH`,
-      body_preview:      'Quote: EUR 3,200 all-in, LH8400, 5 days transit. Departure available, confirm by tomorrow.',
-      cc:                null,
-      nylas_message_id:  MSG.v2,
-      nylas_thread_id:   'thread-123456-vendor',
-      is_read:           true,
-      is_starred:        false,
-      has_attachments:   false,
-      is_processed:      true,
-      created_at:        daysAgo(3),
-    },
-
   ])
 
   // ── Draft task: booking confirmation to vendor ─────────────────────────────────
@@ -526,8 +254,8 @@ FreightMate Operations`,
       promises_made:         ['We will send a booking confirmation once the carrier confirms', 'Delivery within 5 business days of departure'],
       unresolved_issues:     [],
       communication_risks:   [],
-      last_message_included: MSG.c5,
-      message_count:         5,
+      last_message_included: null,
+      message_count:         0,
       model_used:            'claude-sonnet-4-6',
       input_tokens:          820,
       output_tokens:         240,
@@ -543,8 +271,8 @@ FreightMate Operations`,
       promises_made:         [],
       unresolved_issues:     [],
       communication_risks:   ['Space on LH8400 is limited — booking confirmation should be sent promptly'],
-      last_message_included: MSG.v2,
-      message_count:         2,
+      last_message_included: null,
+      message_count:         0,
       model_used:            'claude-sonnet-4-6',
       input_tokens:          540,
       output_tokens:         160,
@@ -612,7 +340,7 @@ async function main() {
   console.log('\n🚀 FreightMate seed — Ref 123456\n')
   await cleanup()
   await seed()
-  console.log('\n✅ Seed complete. Open /cases/123456 to see the case.\n')
+  console.log('\n✅ Seed complete. email_messages is empty — populate via Sync button.\n')
 }
 
 main().catch(err => {

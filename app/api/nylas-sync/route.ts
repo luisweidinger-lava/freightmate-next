@@ -20,28 +20,33 @@ export async function POST(_req: NextRequest) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
 
-  // ── 1. Fetch from Nylas ────────────────────────────────────────────────────
-  const nylasRes = await fetch(
-    `${nylasBase}/v3/grants/${grantId}/messages?limit=50&fields=standard`,
-    {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
+  // ── 1. Fetch INBOX + SENT in parallel ─────────────────────────────────────
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+  const base = `${nylasBase}/v3/grants/${grantId}/messages?limit=50&fields=standard`
 
-  if (!nylasRes.ok) {
-    const errText = await nylasRes.text()
-    console.error('[nylas-sync] Nylas error:', nylasRes.status, errText)
+  const [inboxRes, sentRes] = await Promise.all([
+    fetch(`${base}&in=INBOX`, { headers }),
+    fetch(`${base}&in=SENT`,  { headers }),
+  ])
+
+  if (!inboxRes.ok) {
+    const errText = await inboxRes.text()
+    console.error('[nylas-sync] Nylas INBOX error:', inboxRes.status, errText)
     return Response.json(
-      { error: `Nylas sync failed (${nylasRes.status}): ${errText}` },
+      { error: `Nylas sync failed (${inboxRes.status}): ${errText}` },
       { status: 502 }
     )
   }
 
-  const json = await nylasRes.json()
-  const messages: NylasMessage[] = json.data ?? []
+  const inboxJson = await inboxRes.json()
+  const sentJson  = sentRes.ok ? await sentRes.json() : { data: [] }
+
+  const allMsgs = [...(inboxJson.data ?? []), ...(sentJson.data ?? [])]
+  // Dedup by Nylas message ID (inbox + sent can overlap in some providers)
+  const messages: NylasMessage[] = [...new Map(allMsgs.map(m => [m.id, m])).values()]
 
   if (messages.length === 0) {
     return Response.json({ synced: 0 })

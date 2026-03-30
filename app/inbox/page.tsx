@@ -138,6 +138,23 @@ function MailListItem({
   )
 }
 
+// ─── Nylas move helper ────────────────────────────────────────────────────────
+// Propagates bin/spam to Gmail via Nylas. Skips fake/local message IDs silently.
+
+async function nylasMove(email: EmailMessage, folder: 'TRASH' | 'SPAM') {
+  const id = email.nylas_message_id
+  if (!id || id.startsWith('local_') || id.startsWith('draft_')) return
+  try {
+    await fetch('/api/nylas-move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId: id, folder }),
+    })
+  } catch {
+    // Fire-and-forget — Supabase update proceeds regardless
+  }
+}
+
 // ─── Triage panel ─────────────────────────────────────────────────────────────
 
 function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => void }) {
@@ -222,13 +239,21 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
 
       <div className="flex gap-2">
         <button
-          onClick={() => supabase.from('email_messages').update({ folder: 'spam' }).eq('id', email.id).then(onDone)}
+          onClick={async () => {
+            await nylasMove(email, 'SPAM')
+            await supabase.from('email_messages').update({ folder: 'spam' }).eq('id', email.id)
+            onDone()
+          }}
           className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-1"
         >
           <AlertOctagon size={11} /> Spam
         </button>
         <button
-          onClick={() => supabase.from('email_messages').update({ folder: 'bin' }).eq('id', email.id).then(onDone)}
+          onClick={async () => {
+            await nylasMove(email, 'TRASH')
+            await supabase.from('email_messages').update({ folder: 'bin' }).eq('id', email.id)
+            onDone()
+          }}
           className="text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-red-50 transition-colors flex items-center gap-1"
         >
           <Trash2 size={11} /> Bin
@@ -311,11 +336,13 @@ function MailDetail({
     onAction()
   }
   async function markSpam() {
+    await nylasMove(email, 'SPAM')
     await supabase.from('email_messages').update({ folder: 'spam' }).eq('id', email.id)
     toast.success('Moved to spam')
     onAction(); onClose()
   }
   async function moveToBin() {
+    await nylasMove(email, 'TRASH')
     await supabase.from('email_messages').update({ folder: 'bin', is_starred: false }).eq('id', email.id)
     toast.success('Moved to bin')
     onAction(); onClose()
@@ -587,6 +614,8 @@ function InboxContent() {
 
   async function bulkBin() {
     const ids = [...selectedIds]
+    const targets = emails.filter(e => selectedIds.has(e.id))
+    await Promise.all(targets.map(e => nylasMove(e, 'TRASH')))
     await supabase.from('email_messages').update({ folder: 'bin', is_starred: false }).in('id', ids)
     setEmails(prev => prev.filter(e => !selectedIds.has(e.id)))
     clearSelection()
@@ -601,6 +630,8 @@ function InboxContent() {
   }
   async function bulkSpam() {
     const ids = [...selectedIds]
+    const targets = emails.filter(e => selectedIds.has(e.id))
+    await Promise.all(targets.map(e => nylasMove(e, 'SPAM')))
     await supabase.from('email_messages').update({ folder: 'spam' }).in('id', ids)
     setEmails(prev => prev.filter(e => !selectedIds.has(e.id)))
     clearSelection()

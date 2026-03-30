@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Send, Sparkles } from 'lucide-react'
+import { Send, Sparkles, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -21,6 +21,9 @@ export function InlineCompose({
 }: Props) {
   const [body,     setBody]     = useState('')
   const [subject,  setSubject]  = useState(defaultSubject)
+  const [extraTo,  setExtraTo]  = useState('')
+  const [cc,       setCc]       = useState('')
+  const [bcc,      setBcc]      = useState('')
   const [sending,  setSending]  = useState(false)
   const [drafting, setDrafting] = useState(false)
 
@@ -33,11 +36,17 @@ export function InlineCompose({
     if (!body.trim()) return
     setSending(true)
     try {
+      // Build to list: locked defaultTo + any extra addresses
+      const extraAddresses = extraTo.split(',').map(s => s.trim()).filter(Boolean)
+      const toList = [defaultTo, ...extraAddresses]
+
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: defaultTo,
+          to:  toList,
+          cc:  cc.trim() || undefined,
+          bcc: bcc.trim() || undefined,
           subject,
           body,
           replyToNylasMessageId,
@@ -48,6 +57,9 @@ export function InlineCompose({
       if (res.ok) {
         toast.success('Email sent')
         setBody('')
+        setExtraTo('')
+        setCc('')
+        setBcc('')
         onSent()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -81,10 +93,43 @@ export function InlineCompose({
 
   return (
     <div className={cn('border-t-2 bg-white/70 backdrop-blur-sm p-3 space-y-2 flex-shrink-0', borderAccent)}>
-      {/* To + Subject header */}
+      {/* Recipient fields */}
       <div className="grid grid-cols-[32px_1fr] gap-x-2 gap-y-1 text-xs">
+        {/* To — locked chip + optional extra addresses */}
         <span className="text-gray-400 font-medium self-center">To</span>
-        <span className="text-gray-600 truncate font-medium">{defaultTo || '—'}</span>
+        <div className="flex items-center flex-wrap gap-1 min-h-[22px]">
+          {/* Locked primary recipient */}
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-gray-100 text-gray-700 rounded px-2 py-0.5 border border-gray-200 flex-shrink-0">
+            {defaultTo || '—'}
+            <X size={9} className="text-gray-300 cursor-default" aria-hidden />
+          </span>
+          <input
+            value={extraTo}
+            onChange={e => setExtraTo(e.target.value)}
+            placeholder="Add recipients…"
+            className="flex-1 min-w-[120px] bg-transparent text-gray-600 text-xs focus:outline-none"
+          />
+        </div>
+
+        {/* CC */}
+        <span className="text-gray-400 font-medium self-center">CC</span>
+        <input
+          value={cc}
+          onChange={e => setCc(e.target.value)}
+          placeholder="CC addresses…"
+          className="bg-transparent text-gray-600 text-xs focus:outline-none border-b border-gray-100 focus:border-violet-300 pb-0.5 transition-colors"
+        />
+
+        {/* BCC */}
+        <span className="text-gray-400 font-medium self-center">BCC</span>
+        <input
+          value={bcc}
+          onChange={e => setBcc(e.target.value)}
+          placeholder="BCC addresses…"
+          className="bg-transparent text-gray-600 text-xs focus:outline-none border-b border-gray-100 focus:border-violet-300 pb-0.5 transition-colors"
+        />
+
+        {/* Subject */}
         <span className="text-gray-400 font-medium self-center">Subj.</span>
         <input
           value={subject}

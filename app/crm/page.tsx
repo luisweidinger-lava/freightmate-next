@@ -24,12 +24,12 @@ type EditTarget =
 
 // ─── Add Contact flow ─────────────────────────────────────────────────────────
 
-function AddContactPanel({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function AddContactPanel({ onClose, onSaved, prefillEmail }: { onClose: () => void; onSaved: () => void; prefillEmail?: string }) {
   const [step, setStep]       = useState<'persona' | 'form'>('persona')
   const [persona, setPersona] = useState<Persona>('client')
   const [saving, setSaving]   = useState(false)
   const [form, setForm]       = useState({
-    display_name: '', email: '', company_name: '', notes: '',
+    display_name: '', email: prefillEmail ?? '', company_name: '', notes: '',
     default_mode: 'email',
   })
 
@@ -411,22 +411,37 @@ export default function CRMPage() {
   const [vendors, setVendors]           = useState<Vendor[]>([])
   const [coordinators, setCoordinators] = useState<Contact[]>([])
   const [unmatched, setUnmatched]       = useState<EmailMessage[]>([])
+  const [unknownAddrs, setUnknownAddrs] = useState<string[]>([])
   const [loading, setLoading]           = useState(true)
   const [showAdd, setShowAdd]           = useState(false)
+  const [addPrefill, setAddPrefill]     = useState<string | undefined>(undefined)
   const [editTarget, setEditTarget]     = useState<EditTarget | null>(null)
 
   const load = useCallback(async () => {
-    const [cRes, vRes, coRes, uRes] = await Promise.all([
+    const [cRes, vRes, coRes, uRes, contactsRes, msgsRes] = await Promise.all([
       supabase.from('clients').select('*').order('company_name', { ascending: true }),
       supabase.from('vendors').select('*, contacts(display_name)').order('name', { ascending: true }),
       supabase.from('contacts').select('*').eq('persona', 'coordinator').order('display_name', { ascending: true }),
       supabase.from('email_messages').select('*').is('case_id', null).eq('folder', 'inbox')
         .order('created_at', { ascending: false }).limit(50),
+      supabase.from('contacts').select('email'),
+      supabase.from('email_messages').select('sender_email, recipient_email, cc').limit(500),
     ])
     setClients((cRes.data || []) as Client[])
     setVendors((vRes.data || []) as Vendor[])
     setCoordinators((coRes.data || []) as Contact[])
     setUnmatched((uRes.data || []) as EmailMessage[])
+
+    // Detect unrecognised addresses from all email headers
+    const knownSet = new Set((contactsRes.data || []).map(c => c.email as string))
+    const allAddrs = (msgsRes.data || []).flatMap(m => [
+      m.sender_email,
+      m.recipient_email,
+      ...((m.cc as string[] | null) ?? []),
+    ]).filter((a): a is string => Boolean(a))
+    const unknown = [...new Set(allAddrs)].filter(a => !knownSet.has(a))
+    setUnknownAddrs(unknown)
+
     setLoading(false)
   }, [])
 
@@ -452,7 +467,7 @@ export default function CRMPage() {
             <p className="text-xs text-gray-400 mt-0.5">Contacts, vendors, and unmatched email addresses</p>
           </div>
           <button
-            onClick={() => setShowAdd(true)}
+            onClick={() => { setAddPrefill(undefined); setShowAdd(true) }}
             className="flex items-center gap-2 text-sm font-semibold bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 transition-colors"
           >
             <Plus size={14} /> Add Contact
@@ -587,6 +602,38 @@ export default function CRMPage() {
             )}
           </section>
 
+          {/* ── Unrecognised Addresses ───────────────────────────────────────── */}
+          {unknownAddrs.length > 0 && (
+            <section className="bg-white mt-3">
+              <SectionHeader icon={<Mail size={16} />} title="Unrecognised Addresses" count={unknownAddrs.length} />
+              <p className="px-6 py-2 text-xs text-gray-400 border-b border-gray-100">
+                Email addresses found in message headers that are not in your CRM.
+              </p>
+              <table className="w-full">
+                <TableHead cols={['Address', 'Action']} />
+                <tbody>
+                  {unknownAddrs.map(addr => (
+                    <TableRow
+                      key={addr}
+                      cols={[
+                        <span className="flex items-center gap-1.5 text-gray-700">
+                          <Mail size={12} className="text-gray-400 flex-shrink-0" />
+                          {addr}
+                        </span>,
+                        <button
+                          onClick={() => { setAddPrefill(addr); setShowAdd(true) }}
+                          className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-medium transition-colors"
+                        >
+                          <Plus size={11} /> Add to CRM
+                        </button>,
+                      ]}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
         </div>
       </div>
 
@@ -604,6 +651,7 @@ export default function CRMPage() {
         <AddContactPanel
           onClose={() => setShowAdd(false)}
           onSaved={load}
+          prefillEmail={addPrefill}
         />
       )}
     </div>

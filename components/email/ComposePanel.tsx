@@ -37,9 +37,11 @@ function buildSubject(mode: ComposeMode, original?: string): string {
 export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelProps) {
   const [to,      setTo]      = useState(mode === 'reply' || mode === 'replyAll' ? (replyTo?.sender_email ?? '') : '')
   const [cc,      setCc]      = useState(mode === 'replyAll' ? (replyTo?.cc?.join(', ') ?? '') : '')
+  const [bcc,     setBcc]     = useState('')
   const [subject, setSubject] = useState(buildSubject(mode, replyTo?.subject ?? ''))
   const [body,    setBody]    = useState('')
   const [showCc,  setShowCc]  = useState(mode === 'replyAll' && !!replyTo?.cc?.length)
+  const [showBcc, setShowBcc] = useState(false)
   const [sending, setSending] = useState(false)
   const [minimized, setMinimized] = useState(false)
 
@@ -60,6 +62,7 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
         body: JSON.stringify({
           to:              to.trim(),
           cc:              cc.trim() || undefined,
+          bcc:             bcc.trim() || undefined,
           subject:         subject.trim(),
           body:            body + quotedBody,
           replyToNylasMessageId: replyTo?.nylas_message_id ?? undefined,
@@ -146,13 +149,19 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
             placeholder="recipient@example.com"
             className="flex-1 text-sm py-2.5 focus:outline-none"
           />
-          {!showCc && (
-            <button
-              onClick={() => setShowCc(true)}
-              className="text-xs text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0"
-            >
-              + CC
-            </button>
+          {(!showCc || !showBcc) && (
+            <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+              {!showCc && (
+                <button onClick={() => setShowCc(true)} className="text-xs text-gray-400 hover:text-gray-600">
+                  + CC
+                </button>
+              )}
+              {!showBcc && (
+                <button onClick={() => setShowBcc(true)} className="text-xs text-gray-400 hover:text-gray-600">
+                  + BCC
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -165,6 +174,20 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
               value={cc}
               onChange={e => setCc(e.target.value)}
               placeholder="cc@example.com"
+              className="flex-1 text-sm py-2.5 focus:outline-none"
+            />
+          </div>
+        )}
+
+        {/* BCC (expandable) */}
+        {showBcc && (
+          <div className="flex items-center border-b border-gray-100 px-4">
+            <span className="text-xs text-gray-400 w-10 flex-shrink-0">BCC</span>
+            <input
+              type="text"
+              value={bcc}
+              onChange={e => setBcc(e.target.value)}
+              placeholder="bcc@example.com"
               className="flex-1 text-sm py-2.5 focus:outline-none"
             />
           </div>

@@ -22,19 +22,35 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
 
-  const { to, cc, subject, body, replyToNylasMessageId, case_id, channel_id } = await req.json()
+  const { to, cc, bcc, subject, body, replyToNylasMessageId, case_id, channel_id } = await req.json()
 
   if (!to || !subject) {
     return Response.json({ error: 'to and subject are required' }, { status: 400 })
+  }
+
+  // Normalise to/cc/bcc — accept string or string[]
+  function toEmailList(val: string | string[] | undefined | null) {
+    if (!val) return []
+    const arr = Array.isArray(val) ? val : val.split(',').map(s => s.trim())
+    return arr.filter(Boolean).map(email => ({ email }))
+  }
+
+  const toList  = toEmailList(to)
+  const ccList  = toEmailList(cc)
+  const bccList = toEmailList(bcc)
+
+  if (toList.length === 0) {
+    return Response.json({ error: 'At least one recipient is required' }, { status: 400 })
   }
 
   // ── 1. Send via Nylas ──────────────────────────────────────────────────────
   const nylasBody: Record<string, unknown> = {
     subject,
     body: body || '',
-    to: [{ email: to }],
+    to: toList,
   }
-  if (cc) nylasBody.cc = [{ email: cc }]
+  if (ccList.length)  nylasBody.cc  = ccList
+  if (bccList.length) nylasBody.bcc = bccList
   if (replyToNylasMessageId) nylasBody.reply_to_message_id = replyToNylasMessageId
 
   const nylasRes = await fetch(
@@ -73,8 +89,8 @@ export async function POST(req: NextRequest) {
     subject,
     body_text:          body || '',
     body_preview:       (body || '').slice(0, 200),
-    recipient_email:    to,
-    cc:                 cc ? [cc] : [],
+    recipient_email:    toList[0]?.email ?? null,
+    cc:                 ccList.map(a => a.email),
     sender_email:       'freightmate58@gmail.com',
     is_read:            true,
     has_attachments:    false,
