@@ -396,24 +396,27 @@ export default function CRMPage() {
 
   async function handlePromote(contact: Contact, to: 'client' | 'vendor') {
     if (to === 'client') {
-      // Ensure contact row has persona = client
       await supabase.from('contacts').update({ persona: 'client' }).eq('id', contact.id)
+      // Remove from vendors if previously promoted there
+      await supabase.from('vendors').delete().eq('email', contact.email)
       const { error } = await supabase.from('clients').upsert(
         { email: contact.email, contact_id: contact.id, display_name: contact.display_name, company_name: contact.company_name },
         { onConflict: 'email' }
       )
       if (error) { toast.error(error.message); return }
       toast.success(`${contact.email} added as Client`)
-      loadClients(); loadContacts()
+      loadClients(); loadVendors(); loadContacts()
     } else {
       await supabase.from('contacts').update({ persona: 'vendor' }).eq('id', contact.id)
+      // Remove from clients if previously promoted there
+      await supabase.from('clients').delete().eq('email', contact.email)
       const { error } = await supabase.from('vendors').upsert(
         { email: contact.email, contact_id: contact.id, name: contact.display_name || contact.email, default_mode: 'email', is_active: true },
         { onConflict: 'email' }
       )
       if (error) { toast.error(error.message); return }
       toast.success(`${contact.email} added as Vendor`)
-      loadVendors(); loadContacts()
+      loadVendors(); loadClients(); loadContacts()
     }
   }
 

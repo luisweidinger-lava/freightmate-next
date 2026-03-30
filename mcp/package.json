@@ -1,0 +1,24 @@
+{
+  "name": "@freightmate/mcp-server",
+  "version": "0.1.0",
+  "description": "FreightMate MCP in-app AI gateway — privacy-controlled data layer for AI features",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev":   "tsx --env-file=../.env.local --watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@supabase/supabase-js": "^2.100.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

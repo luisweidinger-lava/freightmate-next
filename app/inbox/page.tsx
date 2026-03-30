@@ -61,28 +61,40 @@ function MailDetailSkeleton() {
 // ─── Mail list item ───────────────────────────────────────────────────────────
 
 function MailListItem({
-  email, selected, onClick,
+  email, selected, checked, onCheck, onClick,
 }: {
-  email: EmailMessage; selected: boolean; onClick: () => void
+  email: EmailMessage; selected: boolean; checked: boolean
+  onCheck: (id: string, checked: boolean) => void; onClick: () => void
 }) {
   const isUnmatched = !email.case_id
-  // Extract display name: "Luis Weidinger" → show it; otherwise use email address
   const senderLabel = email.sender_email || '(unknown sender)'
 
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cn(
-        'w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50/80 transition-colors flex items-start gap-3',
-        selected && 'bg-blue-50 border-l-[3px] border-l-blue-500',
+        'w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50/80 transition-colors flex items-start gap-3 group',
+        selected && 'bg-violet-50/80 border-l-[3px] border-l-violet-500',
+        checked && 'bg-violet-50/40',
       )}
     >
-      {/* Unread dot */}
-      <div className="mt-[7px] flex-shrink-0 w-2">
-        {!email.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 block" />}
+      {/* Checkbox / unread dot */}
+      <div className="mt-[5px] flex-shrink-0 w-4 flex items-center justify-center">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={e => { e.stopPropagation(); onCheck(email.id, e.target.checked) }}
+          onClick={e => e.stopPropagation()}
+          className={cn(
+            'w-3 h-3 rounded cursor-pointer accent-blue-600',
+            !checked && 'opacity-0 group-hover:opacity-100 transition-opacity',
+          )}
+        />
+        {!checked && !email.is_read && (
+          <span className="w-2 h-2 rounded-full bg-violet-500 block absolute group-hover:hidden" />
+        )}
       </div>
 
-      <div className="flex-1 min-w-0">
+      <button onClick={onClick} className="flex-1 min-w-0 text-left">
         {/* Row 1: sender + timestamp */}
         <div className="flex items-center justify-between gap-2">
           <span className={cn(
@@ -115,14 +127,14 @@ function MailListItem({
             {extractTextPreview(email.body_preview || email.body_text)}
           </p>
         </div>
-      </div>
+      </button>
 
       {/* Icons */}
       <div className="flex-shrink-0 flex flex-col items-end gap-1 mt-0.5">
         {email.is_starred && <Star size={11} className="text-amber-400 fill-amber-400" />}
         {email.has_attachments && <Paperclip size={11} className="text-gray-300" />}
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -194,7 +206,7 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
           onClick={linkToCase}
           disabled={linking || !refInput.trim()}
           title="Link to existing case"
-          className="flex items-center gap-1.5 text-xs px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-1.5 text-xs px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
         >
           <Link2 size={11} /> {linking ? 'Linking…' : 'Link'}
         </button>
@@ -246,7 +258,7 @@ function MailDetail({
     onAction(); onClose()
   }
   async function moveToBin() {
-    await supabase.from('email_messages').update({ folder: 'bin' }).eq('id', email.id)
+    await supabase.from('email_messages').update({ folder: 'bin', is_starred: false }).eq('id', email.id)
     toast.success('Moved to bin')
     onAction(); onClose()
   }
@@ -399,11 +411,19 @@ function InboxContent() {
   const [selected, setSelected] = useState<EmailMessage | null>(null)
   const [search, setSearch]     = useState('')
   const [filter, setFilter]     = useState<'all' | 'unread' | 'unmatched'>(
-    filterParam === 'unmatched' ? 'unmatched' : 'all'
+    filterParam === 'unmatched' ? 'unmatched' : filterParam === 'unread' ? 'unread' : 'all'
   )
   const [loading, setLoading]   = useState(true)
-  const [syncing, setSyncing]   = useState(false)
-  const [compose, setCompose]   = useState(false)
+
+  // Sync filter state when URL param changes (e.g. sidebar "Unmatched" link while already on /inbox)
+  useEffect(() => {
+    if (filterParam === 'unmatched') setFilter('unmatched')
+    else if (filterParam === 'unread') setFilter('unread')
+    else setFilter('all')
+  }, [filterParam])
+  const [syncing, setSyncing]       = useState(false)
+  const [compose, setCompose]       = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -429,13 +449,22 @@ function InboxContent() {
 
   useEffect(() => { load() }, [load])
 
+  // Realtime — auto-refresh inbox when any email changes (sync, read, star, move, delete)
+  useEffect(() => {
+    const channel = supabase
+      .channel('inbox-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_messages' }, load)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [load])
+
   async function handleSync() {
     setSyncing(true)
     try {
       const res = await fetch('/api/nylas-sync', { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
-        toast.success(`Synced ${data.synced} messages from Gmail`)
+        toast.success(`Sync complete — ${data.upserted ?? data.synced} new or updated messages`)
         load()
       } else {
         toast.error(data.error || 'Sync failed')
@@ -446,11 +475,44 @@ function InboxContent() {
   }
 
 
+  // Bulk actions
+  function toggleCheck(id: string, checked: boolean) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      checked ? next.add(id) : next.delete(id)
+      return next
+    })
+  }
+  function clearSelection() { setSelectedIds(new Set()) }
+
+  async function bulkBin() {
+    const ids = [...selectedIds]
+    await supabase.from('email_messages').update({ folder: 'bin', is_starred: false }).in('id', ids)
+    setEmails(prev => prev.filter(e => !selectedIds.has(e.id)))
+    clearSelection()
+    toast.success(`${ids.length} email${ids.length > 1 ? 's' : ''} moved to bin`)
+  }
+  async function bulkMarkRead() {
+    const ids = [...selectedIds]
+    await supabase.from('email_messages').update({ is_read: true }).in('id', ids)
+    setEmails(prev => prev.map(e => selectedIds.has(e.id) ? { ...e, is_read: true } : e))
+    clearSelection()
+    toast.success(`${ids.length} email${ids.length > 1 ? 's' : ''} marked as read`)
+  }
+  async function bulkSpam() {
+    const ids = [...selectedIds]
+    await supabase.from('email_messages').update({ folder: 'spam' }).in('id', ids)
+    setEmails(prev => prev.filter(e => !selectedIds.has(e.id)))
+    clearSelection()
+    toast.success(`${ids.length} email${ids.length > 1 ? 's' : ''} moved to spam`)
+  }
+
   // Mark as read when selected
   useEffect(() => {
     if (selected && !selected.is_read) {
       supabase.from('email_messages').update({ is_read: true }).eq('id', selected.id)
       setSelected(prev => prev ? { ...prev, is_read: true } : null)
+      setEmails(prev => prev.map(e => e.id === selected.id ? { ...e, is_read: true } : e))
     }
   }, [selected?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -486,7 +548,7 @@ function InboxContent() {
               </button>
               <button
                 onClick={() => setCompose(true)}
-                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                className="flex items-center gap-1.5 text-xs bg-violet-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-violet-700 transition-colors font-medium"
               >
                 <Edit3 size={11} /> Compose
               </button>
@@ -532,6 +594,17 @@ function InboxContent() {
           </div>
         </div>
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-blue-700 font-medium">{selectedIds.size} selected</span>
+            <button onClick={bulkMarkRead} className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">Mark read</button>
+            <button onClick={bulkSpam} className="text-xs px-2 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">Spam</button>
+            <button onClick={bulkBin} className="text-xs px-2 py-1 rounded bg-white border border-red-100 text-red-600 hover:bg-red-50 transition-colors">Bin</button>
+            <button onClick={clearSelection} className="text-xs text-gray-400 hover:text-gray-600 ml-auto transition-colors">Clear</button>
+          </div>
+        )}
+
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {loading && <MailListSkeleton />}
@@ -546,6 +619,8 @@ function InboxContent() {
               key={email.id}
               email={email}
               selected={selected?.id === email.id}
+              checked={selectedIds.has(email.id)}
+              onCheck={toggleCheck}
               onClick={() => setSelected(email)}
             />
           ))}

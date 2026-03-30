@@ -101,9 +101,10 @@ export interface CaseChannel {
   party_email:     string
   nylas_thread_id: string | null
   cc_emails:       string[]
-  last_message_at: string | null
-  message_count:   number
-  created_at:      string
+  last_message_at:         string | null
+  last_seen_sender_email?: string
+  message_count:           number
+  created_at:              string
 }
 
 export interface DraftTask {

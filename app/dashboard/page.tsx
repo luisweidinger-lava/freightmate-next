@@ -6,58 +6,47 @@ import { ShipmentCase, EmailMessage, DraftTask } from '@/lib/types'
 import { formatDate, formatRef, slaStatus } from '@/lib/utils'
 import {
   Activity, AlertTriangle, CheckCircle2, Clock,
-  Mail, FileWarning, ArrowRight, RefreshCw,
+  Mail, FileWarning, ArrowRight, RefreshCw, Sparkles,
 } from 'lucide-react'
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
+// ─── Status pipeline config ───────────────────────────────────────────────────
 
-function KPICard({
-  label, value, icon: Icon, color, sub,
-}: {
-  label: string; value: number | string; icon: React.ElementType
-  color: string; sub?: string
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-start gap-4">
-      <div className={`p-2.5 rounded-lg ${color}`}>
-        <Icon size={18} className="text-white" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-2xl font-bold text-gray-900 leading-none">{value}</p>
-        <p className="text-xs text-gray-500 mt-1">{label}</p>
-        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  )
-}
+const PIPELINE_STAGES = [
+  { key: 'new',              label: 'New',        color: 'bg-slate-400'   },
+  { key: 'vendor_requested', label: 'Vendor Req', color: 'bg-sky-400'     },
+  { key: 'quote_received',   label: 'Quote Rcvd', color: 'bg-amber-400'   },
+  { key: 'quote_sent',       label: 'Quote Sent', color: 'bg-indigo-400'  },
+  { key: 'client_confirmed', label: 'Confirmed',  color: 'bg-green-400'   },
+  { key: 'in_transit',       label: 'In Transit', color: 'bg-orange-400'  },
+]
 
 // ─── SLA dot ─────────────────────────────────────────────────────────────────
 
 function SlaDot({ status }: { status: 'ok' | 'warning' | 'overdue' }) {
-  const colors = { ok: 'bg-green-400', warning: 'bg-amber-400', overdue: 'bg-red-500' }
-  return <span className={`inline-block w-2 h-2 rounded-full ${colors[status]}`} />
+  const colors = { ok: 'bg-green-400', warning: 'bg-amber-400', overdue: 'bg-red-500 animate-pulse' }
+  return <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${colors[status]}`} />
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    new:               'bg-gray-100 text-gray-600',
-    vendor_requested:  'bg-blue-50 text-blue-700',
-    quote_received:    'bg-yellow-50 text-yellow-700',
+    new:               'bg-slate-100 text-slate-600',
+    vendor_requested:  'bg-sky-50 text-sky-700',
+    quote_received:    'bg-amber-50 text-amber-700',
     quote_sent:        'bg-indigo-50 text-indigo-700',
     client_confirmed:  'bg-green-50 text-green-700',
     vendor_confirmed:  'bg-teal-50 text-teal-700',
-    label_received:    'bg-purple-50 text-purple-700',
+    label_received:    'bg-violet-50 text-violet-700',
     booked:            'bg-emerald-50 text-emerald-700',
     in_transit:        'bg-orange-50 text-orange-700',
     delivered:         'bg-green-100 text-green-800',
     closed:            'bg-gray-100 text-gray-500',
   }
-  const cls = map[status] || 'bg-gray-100 text-gray-600'
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>
+    <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-semibold', map[status] || 'bg-gray-100 text-gray-600')}>
       {status.replace(/_/g, ' ')}
     </span>
   )
@@ -66,35 +55,25 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [cases, setCases]             = useState<ShipmentCase[]>([])
-  const [unmatched, setUnmatched]     = useState<EmailMessage[]>([])
-  const [pendingDrafts, setPending]   = useState<DraftTask[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [lastRefresh, setLastRefresh] = useState(new Date())
+  const [cases,         setCases]         = useState<ShipmentCase[]>([])
+  const [unmatched,     setUnmatched]     = useState<EmailMessage[]>([])
+  const [pendingDrafts, setPending]       = useState<DraftTask[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [lastRefresh,   setLastRefresh]   = useState(new Date())
 
   async function load() {
     setLoading(true)
     const [{ data: casesData }, { data: unmatchedData }, { data: draftsData }] =
       await Promise.all([
-        supabase
-          .from('shipment_cases')
-          .select('*')
+        supabase.from('shipment_cases').select('*')
           .not('status', 'in', '("closed","delivered")')
           .order('updated_at', { ascending: false }),
-        supabase
-          .from('email_messages')
-          .select('*')
-          .is('case_id', null)
-          .eq('folder', 'inbox')
-          .order('created_at', { ascending: false })
-          .limit(20),
-        supabase
-          .from('draft_tasks')
-          .select('*')
-          .eq('status', 'ready')
-          .order('priority', { ascending: false }),
+        supabase.from('email_messages').select('*')
+          .is('case_id', null).eq('folder', 'inbox')
+          .order('created_at', { ascending: false }).limit(20),
+        supabase.from('draft_tasks').select('*')
+          .eq('status', 'ready').order('priority', { ascending: false }),
       ])
-
     setCases(casesData || [])
     setUnmatched(unmatchedData || [])
     setPending(draftsData || [])
@@ -104,13 +83,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load()
-
-    // Realtime subscription
     const channel = supabase.channel('dashboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_cases' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'draft_tasks' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'draft_tasks' },   load)
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [])
 
@@ -120,55 +96,91 @@ export default function DashboardPage() {
   const critical = cases.filter(c => c.priority === 'urgent').length
   const needsAct = pendingDrafts.length + unmatched.length
 
-  // Cases needing action (overdue SLA or pending draft or urgent)
+  // Pipeline stage counts
+  const stageCounts = PIPELINE_STAGES.map(s => ({
+    ...s,
+    count: cases.filter(c => c.status === s.key).length,
+  }))
+
+  // Cases needing action
   const actionCases = [...cases]
     .filter(c => slaStatus(c.updated_at, c.status) !== 'ok' || c.priority === 'urgent')
     .slice(0, 8)
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-5 space-y-5 max-w-7xl mx-auto h-full overflow-y-auto">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Live Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Last updated {lastRefresh.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+          <h1 className="text-lg font-bold text-gray-900 font-display tracking-tight">Live Dashboard</h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Updated {lastRefresh.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+          className="flex items-center gap-2 text-xs text-gray-400 hover:text-violet-600 transition-colors"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           Refresh
         </button>
       </div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard label="Active Cases"     value={active}   icon={Activity}      color="bg-blue-500"   />
-        <KPICard label="Delayed"          value={delayed}  icon={Clock}         color="bg-amber-500"  sub="SLA > 24h" />
-        <KPICard label="Critical"         value={critical} icon={AlertTriangle} color="bg-red-500"    sub="Urgent priority" />
-        <KPICard label="Needs Attention"  value={needsAct} icon={FileWarning}   color="bg-purple-500" sub="Drafts + unmatched" />
+      {/* Compact KPI strip */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: 'Active Cases',     value: active,   icon: Activity,      color: 'bg-violet-500', light: 'bg-violet-50 text-violet-700' },
+          { label: 'Delayed',          value: delayed,  icon: Clock,         color: 'bg-amber-500',  light: 'bg-amber-50 text-amber-700'   },
+          { label: 'Critical',         value: critical, icon: AlertTriangle, color: 'bg-red-500',    light: 'bg-red-50 text-red-700'       },
+          { label: 'Needs Attention',  value: needsAct, icon: FileWarning,   color: 'bg-sky-500',    light: 'bg-sky-50 text-sky-700'       },
+        ].map(({ label, value, icon: Icon, color, light }) => (
+          <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3 shadow-sm">
+            <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', color)}>
+              <Icon size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900 leading-none font-display">{value}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5 font-medium uppercase tracking-wide">{label}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* Status pipeline */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3 font-display">
+          Shipment Pipeline
+        </p>
+        <div className="grid grid-cols-6 gap-2">
+          {stageCounts.map(stage => (
+            <div key={stage.key} className="text-center">
+              <div className={cn('h-1.5 rounded-full mb-2', stage.color, stage.count === 0 && 'opacity-20')} />
+              <p className="text-xl font-bold text-gray-900 font-display leading-none">{stage.count}</p>
+              <p className="text-[9px] text-gray-400 mt-1 font-medium uppercase tracking-wide leading-tight">{stage.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Cases needing action */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Cases Needing Action</h2>
-            <Link href="/cases" className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
-              View all <ArrowRight size={11} />
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+          <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 font-display">
+              Needs Action
+            </h2>
+            <Link href="/cases" className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1 font-medium">
+              All cases <ArrowRight size={11} />
             </Link>
           </div>
 
           {actionCases.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-              <CheckCircle2 size={32} className="mb-2 text-green-400" />
-              <p className="text-sm">All cases on track</p>
+            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+              <CheckCircle2 size={28} className="mb-2 text-green-400" />
+              <p className="text-xs">All cases on track</p>
             </div>
           )}
 
@@ -179,35 +191,31 @@ export default function DashboardPage() {
                 <Link
                   key={c.id}
                   href={`/cases/${c.ref_number || c.id}`}
-                  className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 transition-colors group"
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/60 transition-colors group"
                 >
                   <SlaDot status={sla} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-gray-900 font-mono">
                         {formatRef(c.ref_number)}
                       </span>
                       <StatusBadge status={c.status} />
                       {c.priority === 'urgent' && (
-                        <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium">
+                        <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-semibold">
                           Urgent
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">
+                    <p className="text-xs text-gray-400 truncate mt-0.5">
                       {c.origin && c.destination ? `${c.origin} → ${c.destination}` : c.client_email}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs text-gray-400">{formatDate(c.updated_at)}</p>
-                    {sla === 'overdue' && (
-                      <p className="text-xs text-red-500 font-medium">Overdue</p>
-                    )}
-                    {sla === 'warning' && (
-                      <p className="text-xs text-amber-500 font-medium">At risk</p>
-                    )}
+                    {sla === 'overdue' && <p className="text-[10px] text-red-500 font-semibold">Overdue</p>}
+                    {sla === 'warning' && <p className="text-[10px] text-amber-500 font-semibold">At risk</p>}
                   </div>
-                  <ArrowRight size={14} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                  <ArrowRight size={13} className="text-gray-200 group-hover:text-violet-400 transition-colors" />
                 </Link>
               )
             })}
@@ -218,11 +226,14 @@ export default function DashboardPage() {
         <div className="space-y-4">
 
           {/* Pending drafts */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">Drafts Awaiting Approval</h2>
-              <Link href="/drafts" className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1">
-                View all <ArrowRight size={11} />
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+            <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 font-display flex items-center gap-1.5">
+                <Sparkles size={11} className="text-violet-400" />
+                AI Drafts
+              </h2>
+              <Link href="/drafts" className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1 font-medium">
+                View <ArrowRight size={11} />
               </Link>
             </div>
             <div className="divide-y divide-gray-50">
@@ -233,14 +244,14 @@ export default function DashboardPage() {
                 <Link
                   key={d.id}
                   href={`/cases/${d.case_id}`}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/60 transition-colors"
                 >
-                  <span className="w-2 h-2 rounded-full bg-purple-400 draft-pulse flex-shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-violet-400 draft-pulse flex-shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-gray-800 truncate">
+                    <p className="text-xs font-medium text-gray-800 truncate capitalize">
                       {d.draft_type.replace(/_/g, ' ')}
                     </p>
-                    <p className="text-xs text-gray-400">{d.channel_type} channel</p>
+                    <p className="text-[10px] text-gray-400 capitalize">{d.channel_type} channel</p>
                   </div>
                 </Link>
               ))}
@@ -248,13 +259,13 @@ export default function DashboardPage() {
           </div>
 
           {/* Unmatched emails */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-amber-50 bg-amber-50/60 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-amber-900 flex items-center gap-2">
-                <AlertTriangle size={14} className="text-amber-500" />
-                Unmatched Emails
+          <div className="bg-white rounded-xl border border-amber-100 overflow-hidden shadow-sm">
+            <div className="px-5 py-3.5 border-b border-amber-50 bg-amber-50/50 flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-amber-700 font-display flex items-center gap-1.5">
+                <AlertTriangle size={11} className="text-amber-500" />
+                Unmatched
               </h2>
-              <Link href="/inbox?filter=unmatched" className="text-xs text-amber-700 hover:text-amber-900 flex items-center gap-1">
+              <Link href="/inbox?filter=unmatched" className="text-xs text-amber-600 hover:text-amber-800 flex items-center gap-1 font-medium">
                 Triage <ArrowRight size={11} />
               </Link>
             </div>
@@ -266,12 +277,12 @@ export default function DashboardPage() {
                 <Link
                   key={m.id}
                   href={`/inbox?filter=unmatched&id=${m.id}`}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-amber-50/40 transition-colors"
                 >
-                  <Mail size={13} className="text-amber-400 flex-shrink-0" />
+                  <Mail size={12} className="text-amber-400 flex-shrink-0" />
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-gray-800 truncate">{m.subject || '(no subject)'}</p>
-                    <p className="text-xs text-gray-400 truncate">{m.sender_email}</p>
+                    <p className="text-[10px] text-gray-400 truncate">{m.sender_email}</p>
                   </div>
                 </Link>
               ))}

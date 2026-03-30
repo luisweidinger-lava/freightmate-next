@@ -11,7 +11,7 @@ export async function POST(_req: NextRequest) {
   const grantId   = process.env.NYLAS_GRANT_ID
   const nylasBase = process.env.NYLAS_API_BASE ?? 'https://api.us.nylas.com'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!apiKey || !grantId) {
     return Response.json({ error: 'NYLAS_API_KEY or NYLAS_GRANT_ID not configured' }, { status: 500 })
