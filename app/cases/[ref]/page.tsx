@@ -357,7 +357,7 @@ function EmailCard({
 // ─── Thread panel ─────────────────────────────────────────────────────────────
 
 function ThreadPanel({
-  title, channelType, messages, drafts, caseId, channelId, partyEmail, onAction,
+  title, channelType, messages, drafts, caseId, channelId, caseCode, partyEmail, onAction,
 }: {
   title: string
   channelType: 'client' | 'vendor'
@@ -365,6 +365,7 @@ function ThreadPanel({
   drafts: MessageDraft[]
   caseId: string
   channelId: string | null
+  caseCode: string | null
   partyEmail: string
   onAction: () => void
 }) {
@@ -457,6 +458,7 @@ function ThreadPanel({
         channelType={channelType}
         caseId={caseId}
         channelId={channelId}
+        caseCode={caseCode}
         defaultTo={partyEmail}
         defaultSubject={defaultSubject}
         replyToNylasMessageId={lastInbound?.nylas_message_id ?? null}
@@ -679,6 +681,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
           <h1 className="text-sm font-bold text-gray-900 font-display tracking-tight font-mono">
             {formatRef(shipmentCase.ref_number)}
           </h1>
+          {shipmentCase.case_code && (
+            <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+              {shipmentCase.case_code}
+            </span>
+          )}
           {shipmentCase.origin && shipmentCase.destination && (
             <span className="text-xs text-gray-500 hidden sm:block">
               {shipmentCase.origin} → {shipmentCase.destination}
@@ -734,6 +741,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
             drafts={clientDrafts}
             caseId={shipmentCase.id}
             channelId={clientChannel?.id ?? null}
+            caseCode={shipmentCase.case_code ?? null}
             partyEmail={clientChannel?.party_email ?? shipmentCase.client_email ?? ''}
             onAction={load}
           />
@@ -752,6 +760,7 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
             drafts={vendorDrafts}
             caseId={shipmentCase.id}
             channelId={vendorChannel?.id ?? null}
+            caseCode={shipmentCase.case_code ?? null}
             partyEmail={vendorChannel?.party_email ?? ''}
             onAction={load}
           />

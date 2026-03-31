@@ -145,6 +145,7 @@ async function seed() {
   await upsert('shipment_cases', [{
     id:            IDS.case,
     ref_number:    '123456',
+    case_code:     'CASE-20260331-0001',
     mailbox_id:    IDS.mailbox,
     vendor_id:     IDS.vendor,
     status:        'client_confirmed',
