@@ -198,7 +198,7 @@ async function seed() {
     id:           IDS.draft_task,
     case_id:      IDS.case,
     channel_type: 'vendor',
-    draft_type:   'booking_confirmation',
+    draft_type:   'vendor_booking_confirm',
     status:       'ready',
     priority:     1,
     created_at:   daysAgo(1),
