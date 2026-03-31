@@ -9,7 +9,6 @@ interface Props {
   channelType: 'client' | 'vendor'
   caseId: string
   channelId: string | null
-  caseCode: string | null
   defaultTo: string
   defaultSubject: string
   replyToNylasMessageId: string | null
@@ -17,15 +16,11 @@ interface Props {
 }
 
 export function InlineCompose({
-  channelType, caseId, channelId, caseCode,
+  channelType, caseId, channelId,
   defaultTo, defaultSubject, replyToNylasMessageId, onSent,
 }: Props) {
   const [body,     setBody]     = useState('')
-  const [subject,  setSubject]  = useState(
-    caseCode && !defaultSubject.includes('[CASE-')
-      ? `${defaultSubject} [${caseCode}]`
-      : defaultSubject
-  )
+  const [subject,  setSubject]  = useState(defaultSubject)
   const [extraTo,  setExtraTo]  = useState('')
   const [cc,       setCc]       = useState('')
   const [bcc,      setBcc]      = useState('')

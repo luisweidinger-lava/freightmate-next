@@ -252,11 +252,12 @@ function formatMsgDate(iso: string) {
 }
 
 function EmailCard({
-  msg, channelType, defaultCollapsed = false,
+  msg, channelType, defaultCollapsed = false, caseCode,
 }: {
   msg: EmailMessage
   channelType: 'client' | 'vendor'
   defaultCollapsed?: boolean
+  caseCode?: string | null
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
   const isInbound = msg.direction === 'inbound'
@@ -299,9 +300,16 @@ function EmailCard({
       <div className="px-4 pt-3 pb-2.5 bg-gray-50 border-b border-gray-100">
         {/* Subject */}
         <div className="flex items-start justify-between gap-2 mb-2.5">
-          <p className="text-[13px] font-semibold text-gray-900 leading-snug flex-1 min-w-0">
-            {msg.subject || '(no subject)'}
-          </p>
+          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-gray-900 leading-snug">
+              {msg.subject || '(no subject)'}
+            </p>
+            {caseCode && (
+              <span className="text-[9px] font-mono text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 select-all w-fit">
+                {caseCode}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', chip.cls)}>
               {chip.label}
@@ -434,6 +442,7 @@ function ThreadPanel({
             msg={msg}
             channelType={channelType}
             defaultCollapsed={idx < messages.length - 1}
+            caseCode={caseCode}
           />
         ))}
       </div>
@@ -458,7 +467,6 @@ function ThreadPanel({
         channelType={channelType}
         caseId={caseId}
         channelId={channelId}
-        caseCode={caseCode}
         defaultTo={partyEmail}
         defaultSubject={defaultSubject}
         replyToNylasMessageId={lastInbound?.nylas_message_id ?? null}
