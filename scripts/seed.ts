@@ -283,14 +283,15 @@ FreightMate Operations`,
 
   // ── Shipment facts ─────────────────────────────────────────────────────────────
   const facts = [
-    { fact_type: 'origin',      value: 'Frankfurt (FRA), Germany' },
-    { fact_type: 'destination', value: 'Chicago O\'Hare (ORD), USA' },
-    { fact_type: 'weight',      value: '285 kg' },
-    { fact_type: 'dimensions',  value: '110 × 70 × 55 cm' },
-    { fact_type: 'commodity',   value: 'Precision measurement instruments (no hazmat)' },
-    { fact_type: 'rate',        value: 'EUR 3,200 all-in (LH8400)' },
-    { fact_type: 'flight_date', value: flightDate },
-    { fact_type: 'carrier',     value: 'Apex Cargo GmbH / Lufthansa Cargo LH8400' },
+    { fact_type: 'external_ref', value: '123456' },  // enables WF1 Tier 2 matching
+    { fact_type: 'origin',       value: 'Frankfurt (FRA), Germany' },
+    { fact_type: 'destination',  value: 'Chicago O\'Hare (ORD), USA' },
+    { fact_type: 'weight',       value: '285 kg' },
+    { fact_type: 'dimensions',   value: '110 × 70 × 55 cm' },
+    { fact_type: 'commodity',    value: 'Precision measurement instruments (no hazmat)' },
+    { fact_type: 'rate',         value: 'EUR 3,200 all-in (LH8400)' },
+    { fact_type: 'flight_date',  value: flightDate },
+    { fact_type: 'carrier',      value: 'Apex Cargo GmbH / Lufthansa Cargo LH8400' },
   ]
 
   await upsert('shipment_facts', facts.map((f, i) => ({

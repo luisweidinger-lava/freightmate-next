@@ -163,6 +163,28 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
   const [creating, setCreating] = useState(false)
   const router = useRouter()
 
+  // Shared: upsert a case_channel and set channel_id on the email
+  async function attachEmailToCase(caseId: string) {
+    const { data: clientRow } = await supabase
+      .from('clients').select('id').eq('email', email.sender_email ?? '').maybeSingle()
+    const channelType = clientRow ? 'client' : 'vendor'
+
+    const { data: chanData } = await supabase
+      .from('case_channels')
+      .upsert({
+        case_id:         caseId,
+        channel_type:    channelType,
+        party_email:     email.sender_email || '',
+        nylas_thread_id: email.nylas_thread_id || null,
+      }, { onConflict: 'case_id,channel_type' })
+      .select('id')
+      .single()
+
+    await supabase.from('email_messages')
+      .update({ case_id: caseId, channel_id: chanData?.id ?? null, is_processed: true })
+      .eq('id', email.id)
+  }
+
   async function linkToCase() {
     if (!refInput.trim()) return
     setLinking(true)
@@ -177,7 +199,7 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
       setLinking(false)
       return
     }
-    await supabase.from('email_messages').update({ case_id: caseData.id, is_processed: true }).eq('id', email.id)
+    await attachEmailToCase(caseData.id)
     toast.success(`Email linked to ${formatRef(caseData.ref_number)}`)
     setLinking(false)
     onDone()
@@ -197,7 +219,7 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
       setCreating(false)
       return
     }
-    await supabase.from('email_messages').update({ case_id: newCase.id, is_processed: true }).eq('id', email.id)
+    await attachEmailToCase(newCase.id)
     toast.success(`Case created: ${formatRef(refInput.trim())}`)
     setCreating(false)
     onDone()
