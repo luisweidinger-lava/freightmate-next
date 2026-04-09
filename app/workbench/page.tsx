@@ -14,7 +14,7 @@ export default async function WorkbenchPage() {
       .not('status', 'in', '("closed","delivered")')
       .order('updated_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (data?.ref_number) redirect(`/cases/${data.ref_number}`)
     if (data?.id)         redirect(`/cases/${data.id}`)
