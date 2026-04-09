@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
     // Types verified locally — skip re-check during Vercel build
     ignoreBuildErrors: true,
   },
+  turbopack: {
+    root: __dirname,
+  },
 };
 
 export default nextConfig;

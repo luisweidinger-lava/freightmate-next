@@ -8,12 +8,11 @@ import { formatDate, formatRef, extractTextPreview } from '@/lib/utils'
 import {
   Mail, Star, AlertTriangle, Paperclip, Briefcase,
   Search, Link2, Plus, Trash2, AlertOctagon, X,
-  Reply, ReplyAll, Forward, Edit3, RefreshCw, ChevronDown, ChevronUp,
+  RefreshCw, ChevronDown, ChevronUp, MailWarning,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import MailBodyRenderer from '@/components/email/MailBodyRenderer'
-import ComposePanel, { ComposeMode } from '@/components/email/ComposePanel'
 
 // ─── Skeleton loaders ─────────────────────────────────────────────────────────
 
@@ -169,7 +168,7 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
       .from('clients').select('id').eq('email', email.sender_email ?? '').maybeSingle()
     const channelType = clientRow ? 'client' : 'vendor'
 
-    const { data: chanData } = await supabase
+    const { data: chanData, error: chanError } = await supabase
       .from('case_channels')
       .upsert({
         case_id:         caseId,
@@ -180,8 +179,14 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
       .select('id')
       .single()
 
+    if (chanError || !chanData) {
+      console.error('[attachEmailToCase] case_channels upsert failed:', chanError)
+      toast.error('Could not create channel link — try again')
+      return
+    }
+
     await supabase.from('email_messages')
-      .update({ case_id: caseId, channel_id: chanData?.id ?? null, is_processed: true })
+      .update({ case_id: caseId, channel_id: chanData.id, is_processed: true })
       .eq('id', email.id)
   }
 
@@ -319,7 +324,6 @@ function MailDetail({
   email: EmailMessage; onClose: () => void; onAction: () => void
 }) {
   const router = useRouter()
-  const [compose, setCompose] = useState<{ mode: ComposeMode } | null>(null)
   const [thread, setThread]   = useState<EmailMessage[]>([])
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
@@ -373,8 +377,6 @@ function MailDetail({
   const isUnmatched = !email.case_id
   // Use thread if loaded, otherwise fall back to single email
   const displayThread = thread.length > 1 ? thread : null
-  const latestMsg = displayThread ? displayThread[displayThread.length - 1] : email
-
   return (
     <div className="flex flex-col h-full bg-white">
 
@@ -390,24 +392,9 @@ function MailDetail({
 
       {/* Action toolbar — Outlook style, at top */}
       <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-1 bg-gray-50/60 flex-shrink-0 flex-wrap">
-        <button
-          onClick={() => setCompose({ mode: 'reply' })}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-700 bg-white rounded-md px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors font-medium shadow-sm"
-        >
-          <Reply size={12} /> Reply
-        </button>
-        <button
-          onClick={() => setCompose({ mode: 'replyAll' })}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 bg-white rounded-md px-3 py-1.5 hover:bg-gray-100 transition-colors shadow-sm"
-        >
-          <ReplyAll size={12} /> Reply all
-        </button>
-        <button
-          onClick={() => setCompose({ mode: 'forward' })}
-          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 bg-white rounded-md px-3 py-1.5 hover:bg-gray-100 transition-colors shadow-sm"
-        >
-          <Forward size={12} /> Forward
-        </button>
+        <div className="flex items-center gap-1.5 text-xs border border-amber-200 text-amber-800 bg-amber-50 rounded-md px-3 py-1.5 shadow-sm">
+          <MailWarning size={12} /> Reply in Gmail
+        </div>
         <div className="w-px h-4 bg-gray-200 mx-0.5" />
         <button
           onClick={toggleStar}
@@ -537,14 +524,6 @@ function MailDetail({
         {/* Triage panel (unmatched only) */}
         {isUnmatched && <TriagePanel email={email} onDone={onAction} />}
       </div>
-
-      {compose && (
-        <ComposePanel
-          mode={compose.mode}
-          replyTo={latestMsg}
-          onClose={() => setCompose(null)}
-        />
-      )}
     </div>
   )
 }
@@ -571,7 +550,6 @@ function InboxContent() {
     else setFilter('all')
   }, [filterParam])
   const [syncing, setSyncing]       = useState(false)
-  const [compose, setCompose]       = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
@@ -613,7 +591,7 @@ function InboxContent() {
       const res = await fetch('/api/nylas-sync', { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
-        toast.success(`Sync complete — ${data.upserted ?? data.synced} new or updated messages`)
+        toast.success(`Sync complete — ${data.upserted ?? data.synced} updated, ${data.moved_to_bin ?? 0} moved to bin, ${data.deleted_mock ?? 0} mock removed`)
         load()
       } else {
         toast.error(data.error || 'Sync failed')
@@ -699,12 +677,9 @@ function InboxContent() {
                 <RefreshCw size={11} className={syncing ? 'animate-spin' : ''} />
                 {syncing ? 'Syncing…' : 'Sync'}
               </button>
-              <button
-                onClick={() => setCompose(true)}
-                className="flex items-center gap-1.5 text-xs bg-violet-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-violet-700 transition-colors font-medium"
-              >
-                <Edit3 size={11} /> Compose
-              </button>
+              <div className="flex items-center gap-1.5 text-xs border border-amber-200 bg-amber-50 text-amber-800 px-2.5 py-1.5 rounded-lg font-medium">
+                <MailWarning size={11} /> Send manually in Gmail
+              </div>
             {unmatchedCount > 0 && (
               <button
                 onClick={() => setFilter('unmatched')}
@@ -796,10 +771,6 @@ function InboxContent() {
             <p className="text-sm text-gray-400">Select an email to read</p>
           </div>
         </div>
-      )}
-
-      {compose && (
-        <ComposePanel mode="compose" onClose={() => setCompose(false)} />
       )}
     </div>
   )

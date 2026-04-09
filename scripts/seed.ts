@@ -33,8 +33,6 @@ const IDS = {
   case:            'dddddddd-0001-0000-0000-000000000001',
   channel_client:  'eeeeeeee-0001-0001-0000-000000000001',
   channel_vendor:  'eeeeeeee-0001-0002-0000-000000000001',
-  draft_task:      'ffffffff-0001-dddd-0000-000000000001',
-  draft:           'ffffffff-0001-eeee-0000-000000000001',
   summary_client:  'bbbbbbbb-0001-cc00-0000-000000000001',
   summary_vendor:  'bbbbbbbb-0001-dd00-0000-000000000001',
 }
@@ -192,56 +190,6 @@ async function seed() {
       created_at:      daysAgo(4),
     },
   ])
-
-  // ── Draft task: booking confirmation to vendor ─────────────────────────────────
-  await upsert('draft_tasks', [{
-    id:           IDS.draft_task,
-    case_id:      IDS.case,
-    channel_type: 'vendor',
-    draft_type:   'vendor_booking_confirm',
-    status:       'ready',
-    priority:     1,
-    created_at:   daysAgo(1),
-  }])
-
-  // ── AI message draft ──────────────────────────────────────────────────────────
-  await upsert('message_drafts', [{
-    id:               IDS.draft,
-    draft_task_id:    IDS.draft_task,
-    case_id:          IDS.case,
-    channel_type:     'vendor',
-    recipient_email:  'freightmate59@gmail.com',
-    subject:          'Booking Confirmation — FRA → ORD, LH8400, Ref 123456',
-    body_text:        `Dear Klaus,
-
-I am pleased to confirm that our client has approved the booking.
-
-Please proceed with the reservation on LH8400 for the following shipment:
-
-• Reference: 123456
-• Route: Frankfurt (FRA) → Chicago O'Hare (ORD)
-• Flight: LH8400
-• Departure: ${flightDate}
-• Commodity: Precision measurement instruments
-• Weight: 285 kg
-• Dimensions: 110 × 70 × 55 cm
-
-Please send the booking confirmation, AWB number, and any cut-off times to this email address.
-
-For invoicing, please send your invoice to: freightmate58@gmail.com
-
-Thank you for your quick turnaround.
-
-Best regards,
-FreightMate Operations`,
-    version:          1,
-    model_used:       'claude-sonnet-4-6',
-    prompt_tokens:    680,
-    completion_tokens: 195,
-    latency_ms:       1840,
-    created_at:       daysAgo(1),
-    updated_at:       daysAgo(1),
-  }])
 
   // ── Thread summaries ──────────────────────────────────────────────────────────
   await upsert('thread_summaries', [

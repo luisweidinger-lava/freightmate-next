@@ -4,11 +4,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { EmailMessage } from '@/lib/types'
 import { formatDate, extractTextPreview } from '@/lib/utils'
-import { Mail, Star, Paperclip, X, Reply, Forward, AlertOctagon, Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Mail, Star, Paperclip, X, AlertOctagon, Trash2, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import MailBodyRenderer from '@/components/email/MailBodyRenderer'
-import ComposePanel, { ComposeMode } from '@/components/email/ComposePanel'
 
 export type Folder = 'sent' | 'starred' | 'spam' | 'bin' | 'drafts'
 
@@ -47,7 +46,6 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
   const [emails,   setEmails]   = useState<EmailMessage[]>([])
   const [selected, setSelected] = useState<EmailMessage | null>(null)
   const [loading,  setLoading]  = useState(true)
-  const [compose,  setCompose]  = useState<{ mode: ComposeMode; email: EmailMessage } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function load() {
@@ -122,25 +120,6 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
   function ActionBar({ email }: { email: EmailMessage }) {
     return (
       <div className="px-5 py-3 border-t border-gray-100 bg-white flex items-center gap-1.5 flex-wrap">
-
-        {/* Reply / Forward — all folders except sent drafts */}
-        {folder !== 'drafts' && (
-          <>
-            <button
-              onClick={() => setCompose({ mode: 'reply', email })}
-              className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 rounded-lg px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors font-medium"
-            >
-              <Reply size={12} /> Reply
-            </button>
-            <button
-              onClick={() => setCompose({ mode: 'forward', email })}
-              className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
-            >
-              <Forward size={12} /> Forward
-            </button>
-            <div className="w-px h-4 bg-gray-200 mx-1" />
-          </>
-        )}
 
         {/* Star — all folders */}
         <button
@@ -321,15 +300,6 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
             <p className="text-sm">Select an email to read</p>
           </div>
         </div>
-      )}
-
-      {/* Compose panel */}
-      {compose && (
-        <ComposePanel
-          mode={compose.mode}
-          replyTo={compose.email}
-          onClose={() => setCompose(null)}
-        />
       )}
     </div>
   )

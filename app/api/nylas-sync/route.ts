@@ -20,46 +20,65 @@ export async function POST(_req: NextRequest) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
 
-  // ── 1. Fetch INBOX + SENT in parallel ─────────────────────────────────────
+  const supabase = createClient(supabaseUrl, supabaseKey)
+
+  // ── 1. Delete synthetic mail artifacts first ──────────────────────────────
+  const syntheticIdPrefixes = ['local_', 'draft_']
+  let deletedMock = 0
+
+  for (const prefix of syntheticIdPrefixes) {
+    const { error: deleteError, count } = await supabase
+      .from('email_messages')
+      .delete({ count: 'exact' })
+      .like('nylas_message_id', `${prefix}%`)
+
+    if (deleteError) {
+      console.error('[nylas-sync] Supabase mock cleanup error:', deleteError)
+      return Response.json({ error: deleteError.message }, { status: 500 })
+    }
+
+    deletedMock += count ?? 0
+  }
+
+  // ── 2. Fetch Gmail folders in parallel ────────────────────────────────────
   const headers = {
     'Authorization': `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   }
   const base = `${nylasBase}/v3/grants/${grantId}/messages?limit=50&fields=standard`
 
-  const [inboxRes, sentRes] = await Promise.all([
-    fetch(`${base}&in=INBOX`, { headers }),
-    fetch(`${base}&in=SENT`,  { headers }),
-  ])
+  const folderQueries = [
+    { key: 'INBOX', url: `${base}&in=INBOX` },
+    { key: 'SENT', url: `${base}&in=SENT` },
+    { key: 'SPAM', url: `${base}&in=SPAM` },
+    { key: 'TRASH', url: `${base}&in=TRASH` },
+  ] as const
 
-  if (!inboxRes.ok) {
-    const errText = await inboxRes.text()
-    console.error('[nylas-sync] Nylas INBOX error:', inboxRes.status, errText)
+  const folderResponses = await Promise.all(
+    folderQueries.map(async ({ key, url }) => {
+      const response = await fetch(url, { headers })
+      return { key, response }
+    })
+  )
+
+  const failedFolder = folderResponses.find(({ response }) => !response.ok)
+  if (failedFolder) {
+    const errText = await failedFolder.response.text()
+    console.error(`[nylas-sync] Nylas ${failedFolder.key} error:`, failedFolder.response.status, errText)
     return Response.json(
-      { error: `Nylas sync failed (${inboxRes.status}): ${errText}` },
+      { error: `Nylas sync failed (${failedFolder.response.status}): ${errText}` },
       { status: 502 }
     )
   }
 
-  const inboxJson = await inboxRes.json()
-  const sentJson  = sentRes.ok ? await sentRes.json() : { data: [] }
-
-  const allMsgs = [...(inboxJson.data ?? []), ...(sentJson.data ?? [])]
+  const payloads = await Promise.all(folderResponses.map(({ response }) => response.json()))
+  const allMsgs = payloads.flatMap(payload => payload.data ?? [])
   // Dedup by Nylas message ID (inbox + sent can overlap in some providers)
   const messages: NylasMessage[] = [...new Map(allMsgs.map(m => [m.id, m])).values()]
 
-  if (messages.length === 0) {
-    return Response.json({ synced: 0 })
-  }
-
-  // ── 2. Map to email_messages rows ──────────────────────────────────────────
+  // ── 3. Map to email_messages rows ──────────────────────────────────────────
   const rows = messages.map(msg => {
-    const folders: string[] = msg.folders ?? []
-    let folder: 'inbox' | 'sent' | 'spam' | 'drafts' | 'bin' = 'inbox'
-    if (folders.some(f => f.toUpperCase().includes('SENT')))   folder = 'sent'
-    else if (folders.some(f => f.toUpperCase().includes('SPAM') || f.toUpperCase().includes('JUNK'))) folder = 'spam'
-    else if (folders.some(f => f.toUpperCase().includes('TRASH') || f.toUpperCase().includes('BIN'))) folder = 'bin'
-    else if (folders.some(f => f.toUpperCase().includes('DRAFT'))) folder = 'drafts'
+    const folder = mapNylasFolder(msg.folders ?? [])
 
     return {
       nylas_message_id: msg.id,
@@ -75,24 +94,92 @@ export async function POST(_req: NextRequest) {
       is_read:          !msg.unread,
       is_starred:       msg.starred ?? false,
       has_attachments:  (msg.attachments?.length ?? 0) > 0,
-      is_processed:     false,
+      // is_processed is intentionally omitted — set only during triage, not overwritten on sync
       created_at:       msg.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString(),
       visibility:       'internal',
     }
   })
 
-  // ── 3. Upsert into Supabase ────────────────────────────────────────────────
-  const supabase = createClient(supabaseUrl, supabaseKey)
-  const { error, count } = await supabase
-    .from('email_messages')
-    .upsert(rows, { onConflict: 'nylas_message_id', count: 'exact' })
+  // ── 4. Upsert current Gmail state ──────────────────────────────────────────
+  let upserted = 0
+  if (rows.length > 0) {
+    const { error, count } = await supabase
+      .from('email_messages')
+      .upsert(rows, { onConflict: 'nylas_message_id', count: 'exact' })
 
-  if (error) {
-    console.error('[nylas-sync] Supabase upsert error:', error)
-    return Response.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('[nylas-sync] Supabase upsert error:', error)
+      return Response.json({ error: error.message }, { status: 500 })
+    }
+
+    upserted = count ?? rows.length
   }
 
-  return Response.json({ synced: rows.length, upserted: count })
+  // ── 5. Move stale rows to bin when Gmail no longer has them ───────────────
+  const { data: existingRows, error: existingError } = await supabase
+    .from('email_messages')
+    .select('id, folder, nylas_message_id, case_id')
+    .not('nylas_message_id', 'like', 'local_%')
+    .not('nylas_message_id', 'like', 'draft_%')
+
+  if (existingError) {
+    console.error('[nylas-sync] Supabase existing rows fetch error:', existingError)
+    return Response.json({ error: existingError.message }, { status: 500 })
+  }
+
+  const liveIds = new Set(rows.map(row => row.nylas_message_id))
+  const staleRows = (existingRows ?? []).filter(row =>
+    !liveIds.has(row.nylas_message_id) && row.folder !== 'bin'
+  )
+
+  // Case-linked stale: move to bin — preserve email for case history
+  let movedToBin = 0
+  const staleCaseLinkedIds = staleRows.filter(r => r.case_id !== null).map(r => r.id)
+  if (staleCaseLinkedIds.length > 0) {
+    const { error: staleError, count } = await supabase
+      .from('email_messages')
+      .update({ folder: 'bin', is_starred: false }, { count: 'exact' })
+      .in('id', staleCaseLinkedIds)
+
+    if (staleError) {
+      console.error('[nylas-sync] Supabase stale (case-linked) update error:', staleError)
+      return Response.json({ error: staleError.message }, { status: 500 })
+    }
+    movedToBin = count ?? staleCaseLinkedIds.length
+  }
+
+  // Unlinked stale: hard delete — no case, no business value, just ghost inbox clutter
+  let deletedStale = 0
+  const staleUnlinkedIds = staleRows.filter(r => r.case_id === null).map(r => r.id)
+  if (staleUnlinkedIds.length > 0) {
+    const { error: deleteError, count } = await supabase
+      .from('email_messages')
+      .delete({ count: 'exact' })
+      .in('id', staleUnlinkedIds)
+
+    if (deleteError) {
+      console.error('[nylas-sync] Supabase stale (unlinked) delete error:', deleteError)
+      return Response.json({ error: deleteError.message }, { status: 500 })
+    }
+    deletedStale = count ?? staleUnlinkedIds.length
+  }
+
+  return Response.json({
+    synced: rows.length,
+    upserted,
+    moved_to_bin: movedToBin,
+    deleted_stale: deletedStale,
+    deleted_mock: deletedMock,
+  })
+}
+
+function mapNylasFolder(folders: string[]): 'inbox' | 'sent' | 'spam' | 'drafts' | 'bin' {
+  const upperFolders = folders.map(folder => folder.toUpperCase())
+  if (upperFolders.some(folder => folder.includes('SPAM') || folder.includes('JUNK'))) return 'spam'
+  if (upperFolders.some(folder => folder.includes('TRASH') || folder.includes('BIN'))) return 'bin'
+  if (upperFolders.some(folder => folder.includes('DRAFT'))) return 'drafts'
+  if (upperFolders.some(folder => folder.includes('SENT'))) return 'sent'
+  return 'inbox'
 }
 
 interface NylasAddress {

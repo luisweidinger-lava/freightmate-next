@@ -1,12 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Minus, Send, FileText, ChevronDown } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { X, Minus, MailWarning } from 'lucide-react'
 import { EmailMessage } from '@/lib/types'
 import { extractTextPreview } from '@/lib/utils'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
 
 export type ComposeMode = 'compose' | 'reply' | 'replyAll' | 'forward'
 
@@ -42,61 +40,12 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
   const [body,    setBody]    = useState('')
   const [showCc,  setShowCc]  = useState(mode === 'replyAll' && !!replyTo?.cc?.length)
   const [showBcc, setShowBcc] = useState(false)
-  const [sending, setSending] = useState(false)
   const [minimized, setMinimized] = useState(false)
 
   const isDirty = to.trim() || subject.trim() || body.trim()
 
-  const quotedBody = replyTo
-    ? `\n\n────────────────────────────────\nOn ${new Date(replyTo.created_at).toLocaleString('en-GB')}, ${replyTo.sender_email} wrote:\n\n${extractTextPreview(replyTo.body_text || replyTo.body_preview, 800)}`
-    : ''
-
   async function handleSend() {
-    if (!to.trim()) { toast.error('Please enter a recipient'); return }
-    if (!subject.trim()) { toast.error('Please enter a subject'); return }
-    setSending(true)
-    try {
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to:              to.trim(),
-          cc:              cc.trim() || undefined,
-          bcc:             bcc.trim() || undefined,
-          subject:         subject.trim(),
-          body:            body + quotedBody,
-          replyToNylasMessageId: replyTo?.nylas_message_id ?? undefined,
-          case_id:         replyTo?.case_id ?? undefined,
-        }),
-      })
-      if (res.ok) {
-        toast.success('Email sent')
-        onClose()
-      } else {
-        const data = await res.json().catch(() => ({}))
-        toast.error(data.error || 'Failed to send — check server logs')
-      }
-    } finally {
-      setSending(false)
-    }
-  }
-
-  async function handleSaveDraft() {
-    const { error } = await supabase.from('email_messages').insert({
-      folder:           'drafts',
-      direction:        'outbound',
-      subject:          subject.trim() || '(no subject)',
-      body_text:        body + quotedBody,
-      body_preview:     body.slice(0, 200),
-      recipient_email:  to.trim(),
-      sender_email:     'freightmate58@gmail.com',
-      is_read:          true,
-      has_attachments:  false,
-      nylas_message_id: `draft_${crypto.randomUUID()}`,
-    })
-    if (error) { toast.error('Failed to save draft: ' + error.message); return }
-    toast.success('Draft saved')
-    onClose()
+    toast.error('Outbound email is disabled here. Send the message manually from Gmail.')
   }
 
   function handleDiscard() {
@@ -208,6 +157,12 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <div className="flex items-start gap-2">
+            <MailWarning size={14} className="mt-0.5 flex-shrink-0" />
+            <p>Manual Gmail mode is active. This composer is read-only so the app does not create fake mail records.</p>
+          </div>
+        </div>
         <textarea
           value={body}
           onChange={e => setBody(e.target.value)}
@@ -232,19 +187,11 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
       <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white flex-shrink-0">
         <button
           onClick={handleSend}
-          disabled={sending}
-          className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+          disabled
+          className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 transition-colors font-medium"
         >
-          <Send size={13} />
-          {sending ? 'Sending…' : 'Send'}
-        </button>
-        <button
-          onClick={handleSaveDraft}
-          disabled={sending}
-          className="flex items-center gap-1.5 text-sm border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-        >
-          <FileText size={13} />
-          Save draft
+          <MailWarning size={13} />
+          Send in Gmail
         </button>
         <button
           onClick={handleDiscard}

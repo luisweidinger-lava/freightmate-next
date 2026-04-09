@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Send, Sparkles, X } from 'lucide-react'
+import { MailWarning, Sparkles, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -11,64 +11,21 @@ interface Props {
   channelId: string | null
   defaultTo: string
   defaultSubject: string
-  replyToNylasMessageId: string | null
   onSent: () => void
 }
 
 export function InlineCompose({
   channelType, caseId, channelId,
-  defaultTo, defaultSubject, replyToNylasMessageId, onSent,
+  defaultTo, defaultSubject, onSent: _onSent,
 }: Props) {
   const [body,     setBody]     = useState('')
   const [subject,  setSubject]  = useState(defaultSubject)
   const [extraTo,  setExtraTo]  = useState('')
   const [cc,       setCc]       = useState('')
   const [bcc,      setBcc]      = useState('')
-  const [sending,  setSending]  = useState(false)
   const [drafting, setDrafting] = useState(false)
 
   const borderAccent = channelType === 'client' ? 'border-blue-400' : 'border-slate-400'
-  const sendBtnCls   = channelType === 'client'
-    ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300'
-    : 'bg-slate-600 hover:bg-slate-700 disabled:bg-slate-400'
-
-  async function handleSend() {
-    if (!body.trim()) return
-    setSending(true)
-    try {
-      // Build to list: locked defaultTo + any extra addresses
-      const extraAddresses = extraTo.split(',').map(s => s.trim()).filter(Boolean)
-      const toList = [defaultTo, ...extraAddresses]
-
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to:  toList,
-          cc:  cc.trim() || undefined,
-          bcc: bcc.trim() || undefined,
-          subject,
-          body,
-          replyToNylasMessageId,
-          case_id:    caseId,
-          channel_id: channelId ?? undefined,
-        }),
-      })
-      if (res.ok) {
-        toast.success('Email sent')
-        setBody('')
-        setExtraTo('')
-        setCc('')
-        setBcc('')
-        onSent()
-      } else {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err.error || 'Failed to send email')
-      }
-    } finally {
-      setSending(false)
-    }
-  }
 
   async function handleGenerateDraft() {
     setDrafting(true)
@@ -140,6 +97,9 @@ export function InlineCompose({
       </div>
 
       {/* Body textarea */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        Manual Gmail mode is active. Use this panel to prepare text or request an AI draft, then send manually from Gmail.
+      </div>
       <textarea
         value={body}
         onChange={e => setBody(e.target.value)}
@@ -159,15 +119,12 @@ export function InlineCompose({
           {drafting ? 'Requesting…' : 'Generate AI Draft'}
         </button>
         <button
-          onClick={handleSend}
-          disabled={sending || !body.trim()}
-          className={cn(
-            'flex items-center gap-1.5 text-xs text-white px-4 py-1.5 rounded-lg ml-auto transition-colors font-semibold disabled:opacity-50',
-            sendBtnCls,
-          )}
+          onClick={() => toast.error('Outbound email is disabled here. Send the message manually from Gmail.')}
+          disabled
+          className="flex items-center gap-1.5 text-xs text-white bg-slate-500 px-4 py-1.5 rounded-lg ml-auto transition-colors font-semibold disabled:opacity-50"
         >
-          <Send size={11} />
-          {sending ? 'Sending…' : 'Send'}
+          <MailWarning size={11} />
+          Send in Gmail
         </button>
       </div>
     </div>

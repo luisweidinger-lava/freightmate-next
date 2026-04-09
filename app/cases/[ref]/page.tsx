@@ -382,8 +382,6 @@ function ThreadPanel({
   const headerBg   = channelType === 'client' ? 'bg-blue-50/60'   : 'bg-slate-50/60'
   const countCls   = channelType === 'client' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'
 
-  // Last inbound message — for reply-to
-  const lastInbound = [...messages].reverse().find(m => m.direction === 'inbound')
   const lastMsg     = [...messages].at(-1)
   const defaultSubject = lastMsg?.subject
     ? (lastMsg.subject.startsWith('Re:') ? lastMsg.subject : `Re: ${lastMsg.subject}`)
@@ -469,7 +467,6 @@ function ThreadPanel({
         channelId={channelId}
         defaultTo={partyEmail}
         defaultSubject={defaultSubject}
-        replyToNylasMessageId={lastInbound?.nylas_message_id ?? null}
         onSent={onAction}
       />
     </div>
@@ -485,6 +482,26 @@ function CaseIntelPanel({
   summary: ThreadSummary | null
 }) {
   const c = shipmentCase
+  const [summaryLoading, setSummaryLoading] = useState(false)
+
+  async function handleUpdateSummary() {
+    setSummaryLoading(true)
+    try {
+      // Fire for both channels so both summaries stay current
+      await Promise.all(['client', 'vendor'].map(channelType =>
+        fetch('/api/request-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ case_id: c.id, channel_type: channelType }),
+        })
+      ))
+      toast.success('Generating summary…')
+    } catch {
+      toast.error('Summary update failed')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
 
   const TONE_COLORS = {
     neutral:  'text-slate-600 bg-slate-100',
@@ -518,20 +535,33 @@ function CaseIntelPanel({
         <StatusTimeline status={c.status} caseId={c.id} />
 
         {/* AI Summary */}
-        {summary && (
-          <>
-            <hr className="border-white/60" />
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5 font-display uppercase tracking-wide">
-                  <Sparkles size={11} className="text-violet-500" />
-                  Rolling Summary
-                </p>
+        <hr className="border-white/60" />
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5 font-display uppercase tracking-wide">
+              <Sparkles size={11} className="text-violet-500" />
+              Rolling Summary
+            </p>
+            <button
+              onClick={handleUpdateSummary}
+              disabled={summaryLoading}
+              className="text-[10px] text-violet-600 hover:text-violet-800 disabled:opacity-40 flex items-center gap-1 font-medium"
+            >
+              <RefreshCw size={10} className={summaryLoading ? 'animate-spin' : ''} />
+              {summaryLoading ? 'Updating…' : 'Update'}
+            </button>
+          </div>
+          {summary ? (
+            <>
+              <div className="flex items-center gap-2 mb-2">
                 {summary.tone && (
                   <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-semibold', TONE_COLORS[summary.tone] || TONE_COLORS.neutral)}>
                     {summary.tone}
                   </span>
                 )}
+                <span className="text-[10px] text-gray-400">
+                  Updated {formatDate(summary.updated_at)}
+                </span>
               </div>
               <p className="text-xs text-gray-600 leading-relaxed">{summary.summary_text}</p>
 
@@ -562,9 +592,11 @@ function CaseIntelPanel({
                   </ul>
                 </div>
               )}
-            </div>
-          </>
-        )}
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 italic">No summary yet — click Update to generate.</p>
+          )}
+        </div>
 
         {/* Confirmed facts */}
         {facts.length > 0 && (
@@ -640,8 +672,27 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
     const vendorChannel = (channelsData || []).find(c => c.channel_type === 'vendor')
 
     setChannels(channelsData || [])
-    setClientMsgs(allMsgs.filter(m => m.channel_id === clientChannel?.id))
-    setVendorMsgs(allMsgs.filter(m => m.channel_id === vendorChannel?.id))
+
+    // Primary: filter by channel_id (set by triage or WF1/WF2)
+    // Fallback: if channel_id is null, match by party_email (handles emails
+    // that arrived via nylas-sync and were linked to the case but missed
+    // channel_id assignment, e.g. due to a silent upsert failure)
+    setClientMsgs(allMsgs.filter(m => {
+      if (m.channel_id === clientChannel?.id) return true
+      if (m.channel_id === null && clientChannel) {
+        return m.sender_email    === clientChannel.party_email ||
+               m.recipient_email === clientChannel.party_email
+      }
+      return false
+    }))
+    setVendorMsgs(allMsgs.filter(m => {
+      if (m.channel_id === vendorChannel?.id) return true
+      if (m.channel_id === null && vendorChannel) {
+        return m.sender_email    === vendorChannel.party_email ||
+               m.recipient_email === vendorChannel.party_email
+      }
+      return false
+    }))
     setCDrafts(allDrafts.filter(d => d.channel_type === 'client'))
     setVDrafts(allDrafts.filter(d => d.channel_type === 'vendor'))
     setSummary(summaryData || null)

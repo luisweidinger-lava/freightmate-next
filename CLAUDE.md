@@ -14,21 +14,33 @@ Central navigation layer for Claude Code in this project.
 
 ## System Overview
 
-FreightMate is a logistics operations platform.
+FreightMate is a logistics operations platform that supplements a shipment coordinator's daily Gmail workflow — reducing time per case by 30–40% through AI case summaries, automated email→case linkage, status tracking, and draft prompting.
 
 - Email-driven shipment coordination
 - Case-based workflow system
 - AI-assisted operations (drafting, summarisation, automation)
+
+### Single-mailbox architecture — critical principle
+
+**Only the coordinator's mailbox is connected to the system (via Nylas).**
+
+| Mailbox | Role | Nylas-connected |
+|---------|------|-----------------|
+| freightmate58@gmail.com (example) | Shipment coordinator — the app's mailbox | ✅ Yes |
+| Client email | External party — emails the coordinator as always | No |
+| Vendor email | External party — emails the coordinator as always | No |
+
+Clients and vendors are **never system users** and are **never connected to the platform**. They communicate with the coordinator via normal email. FreightMate reads the coordinator's inbox, auto-links incoming emails to cases, and generates AI-assisted summaries and responses. The coordinator's Gmail workflow is unchanged from the outside world's perspective.
 
 ### Architecture
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js — `app/` directory |
-| Database | Supabase (PostgreSQL + PostgREST) |
+| Database | Supabase (PostgreSQL + PostgREST) — **source of truth for the app** |
 | Logic layer | MCP server (`mcp/src/`, runs on port 3001 in dev) |
 | Orchestration | n8n (`https://logra.app.n8n.cloud`) |
-| Email | Nylas v3 EU (`https://api.eu.nylas.com`) |
+| Email | Nylas v3 EU (`https://api.eu.nylas.com`) — coordinator mailbox only |
 
 Core views: Workbench (`/cases/[ref]`), Inbox (`/inbox`), CRM (`/crm`), Reports
 
@@ -102,6 +114,7 @@ Run: `npx tsx scripts/seed.ts`
 | `NYLAS_GRANT_ID` | Nylas mailbox grant ID |
 | `NYLAS_API_BASE` | `https://api.eu.nylas.com` |
 | `NYLAS_CLIENT_SECRET` | Used to verify Nylas webhook HMAC signatures |
+| `N8N_SUMMARY_WEBHOOK_URL` | WF4 — regenerate thread summary (manual trigger) |
 | `N8N_DRAFT_WEBHOOK_URL` | WF5 — generate AI draft |
 | `N8N_SEND_WEBHOOK_URL` | WF6 — approve and send |
 | `N8N_WF1_WEBHOOK_URL` | WF1 — inbound email trigger |
