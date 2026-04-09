@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Minus, MailWarning } from 'lucide-react'
+import { X, Minus, Send } from 'lucide-react'
 import { EmailMessage } from '@/lib/types'
 import { extractTextPreview } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -41,11 +41,41 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
   const [showCc,  setShowCc]  = useState(mode === 'replyAll' && !!replyTo?.cc?.length)
   const [showBcc, setShowBcc] = useState(false)
   const [minimized, setMinimized] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const isDirty = to.trim() || subject.trim() || body.trim()
 
   async function handleSend() {
-    toast.error('Outbound email is disabled here. Send the message manually from Gmail.')
+    if (!to.trim() || !body.trim()) {
+      toast.error('To and body are required')
+      return
+    }
+    setSending(true)
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to,
+          cc:  cc  ? cc.split(',').map(s => s.trim()).filter(Boolean)  : [],
+          bcc: bcc ? bcc.split(',').map(s => s.trim()).filter(Boolean) : [],
+          subject,
+          body,
+          replyToNylasMessageId: replyTo?.nylas_message_id ?? null,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(`Send failed: ${data.error ?? res.statusText}`)
+      } else {
+        toast.success('Message sent')
+        onClose()
+      }
+    } catch (err) {
+      toast.error(`Send failed: ${String(err)}`)
+    } finally {
+      setSending(false)
+    }
   }
 
   function handleDiscard() {
@@ -157,12 +187,6 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <div className="flex items-start gap-2">
-            <MailWarning size={14} className="mt-0.5 flex-shrink-0" />
-            <p>Manual Gmail mode is active. This composer is read-only so the app does not create fake mail records.</p>
-          </div>
-        </div>
         <textarea
           value={body}
           onChange={e => setBody(e.target.value)}
@@ -187,11 +211,11 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
       <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white flex-shrink-0">
         <button
           onClick={handleSend}
-          disabled
-          className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 transition-colors font-medium"
+          disabled={sending}
+          className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
         >
-          <MailWarning size={13} />
-          Send in Gmail
+          <Send size={13} />
+          {sending ? 'Sending…' : 'Send'}
         </button>
         <button
           onClick={handleDiscard}

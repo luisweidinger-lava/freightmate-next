@@ -8,11 +8,12 @@ import { formatDate, formatRef, extractTextPreview } from '@/lib/utils'
 import {
   Mail, Star, AlertTriangle, Paperclip, Briefcase,
   Search, Link2, Plus, Trash2, AlertOctagon, X,
-  RefreshCw, ChevronDown, ChevronUp, MailWarning,
+  Reply, ReplyAll, Forward, RefreshCw, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import MailBodyRenderer from '@/components/email/MailBodyRenderer'
+import ComposePanel, { ComposeMode } from '@/components/email/ComposePanel'
 
 // ─── Skeleton loaders ─────────────────────────────────────────────────────────
 
@@ -324,6 +325,7 @@ function MailDetail({
   email: EmailMessage; onClose: () => void; onAction: () => void
 }) {
   const router = useRouter()
+  const [compose, setCompose] = useState<{ mode: ComposeMode } | null>(null)
   const [thread, setThread]   = useState<EmailMessage[]>([])
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
@@ -377,6 +379,8 @@ function MailDetail({
   const isUnmatched = !email.case_id
   // Use thread if loaded, otherwise fall back to single email
   const displayThread = thread.length > 1 ? thread : null
+  const latestMsg = displayThread ? displayThread[displayThread.length - 1] : email
+
   return (
     <div className="flex flex-col h-full bg-white">
 
@@ -392,9 +396,24 @@ function MailDetail({
 
       {/* Action toolbar — Outlook style, at top */}
       <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-1 bg-gray-50/60 flex-shrink-0 flex-wrap">
-        <div className="flex items-center gap-1.5 text-xs border border-amber-200 text-amber-800 bg-amber-50 rounded-md px-3 py-1.5 shadow-sm">
-          <MailWarning size={12} /> Reply in Gmail
-        </div>
+        <button
+          onClick={() => setCompose({ mode: 'reply' })}
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-700 bg-white rounded-md px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors font-medium shadow-sm"
+        >
+          <Reply size={12} /> Reply
+        </button>
+        <button
+          onClick={() => setCompose({ mode: 'replyAll' })}
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 bg-white rounded-md px-3 py-1.5 hover:bg-gray-100 transition-colors shadow-sm"
+        >
+          <ReplyAll size={12} /> Reply all
+        </button>
+        <button
+          onClick={() => setCompose({ mode: 'forward' })}
+          className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 bg-white rounded-md px-3 py-1.5 hover:bg-gray-100 transition-colors shadow-sm"
+        >
+          <Forward size={12} /> Forward
+        </button>
         <div className="w-px h-4 bg-gray-200 mx-0.5" />
         <button
           onClick={toggleStar}
@@ -524,6 +543,14 @@ function MailDetail({
         {/* Triage panel (unmatched only) */}
         {isUnmatched && <TriagePanel email={email} onDone={onAction} />}
       </div>
+
+      {compose && (
+        <ComposePanel
+          mode={compose.mode}
+          replyTo={latestMsg}
+          onClose={() => setCompose(null)}
+        />
+      )}
     </div>
   )
 }
@@ -677,9 +704,6 @@ function InboxContent() {
                 <RefreshCw size={11} className={syncing ? 'animate-spin' : ''} />
                 {syncing ? 'Syncing…' : 'Sync'}
               </button>
-              <div className="flex items-center gap-1.5 text-xs border border-amber-200 bg-amber-50 text-amber-800 px-2.5 py-1.5 rounded-lg font-medium">
-                <MailWarning size={11} /> Send manually in Gmail
-              </div>
             {unmatchedCount > 0 && (
               <button
                 onClick={() => setFilter('unmatched')}

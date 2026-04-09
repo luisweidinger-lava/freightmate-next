@@ -467,6 +467,7 @@ function ThreadPanel({
         channelId={channelId}
         defaultTo={partyEmail}
         defaultSubject={defaultSubject}
+        replyToNylasMessageId={lastMsg?.nylas_message_id ?? null}
         onSent={onAction}
       />
     </div>

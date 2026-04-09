@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { MailWarning, Sparkles, X } from 'lucide-react'
+import { Send, Sparkles, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -11,21 +11,57 @@ interface Props {
   channelId: string | null
   defaultTo: string
   defaultSubject: string
+  replyToNylasMessageId?: string | null
   onSent: () => void
 }
 
 export function InlineCompose({
   channelType, caseId, channelId,
-  defaultTo, defaultSubject, onSent: _onSent,
+  defaultTo, defaultSubject, replyToNylasMessageId, onSent,
 }: Props) {
   const [body,     setBody]     = useState('')
   const [subject,  setSubject]  = useState(defaultSubject)
   const [extraTo,  setExtraTo]  = useState('')
   const [cc,       setCc]       = useState('')
   const [bcc,      setBcc]      = useState('')
+  const [sending,  setSending]  = useState(false)
   const [drafting, setDrafting] = useState(false)
 
   const borderAccent = channelType === 'client' ? 'border-blue-400' : 'border-slate-400'
+
+  async function handleSend() {
+    if (!body.trim()) return
+    setSending(true)
+    try {
+      const recipients = [defaultTo, ...extraTo.split(',').map(s => s.trim()).filter(Boolean)]
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to:                   recipients[0],
+          cc:                   cc ? cc.split(',').map(s => s.trim()).filter(Boolean) : [],
+          bcc:                  bcc ? bcc.split(',').map(s => s.trim()).filter(Boolean) : [],
+          subject,
+          body,
+          replyToNylasMessageId: replyToNylasMessageId ?? null,
+          case_id:              caseId,
+          channel_id:           channelId,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(`Send failed: ${data.error ?? res.statusText}`)
+      } else {
+        toast.success('Message sent')
+        setBody('')
+        onSent()
+      }
+    } catch (err) {
+      toast.error(`Send failed: ${String(err)}`)
+    } finally {
+      setSending(false)
+    }
+  }
 
   async function handleGenerateDraft() {
     setDrafting(true)
@@ -55,7 +91,6 @@ export function InlineCompose({
         {/* To — locked chip + optional extra addresses */}
         <span className="text-gray-400 font-medium self-center">To</span>
         <div className="flex items-center flex-wrap gap-1 min-h-[22px]">
-          {/* Locked primary recipient */}
           <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-gray-100 text-gray-700 rounded px-2 py-0.5 border border-gray-200 flex-shrink-0">
             {defaultTo || '—'}
             <X size={9} className="text-gray-300 cursor-default" aria-hidden />
@@ -97,9 +132,6 @@ export function InlineCompose({
       </div>
 
       {/* Body textarea */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        Manual Gmail mode is active. Use this panel to prepare text or request an AI draft, then send manually from Gmail.
-      </div>
       <textarea
         value={body}
         onChange={e => setBody(e.target.value)}
@@ -119,12 +151,12 @@ export function InlineCompose({
           {drafting ? 'Requesting…' : 'Generate AI Draft'}
         </button>
         <button
-          onClick={() => toast.error('Outbound email is disabled here. Send the message manually from Gmail.')}
-          disabled
-          className="flex items-center gap-1.5 text-xs text-white bg-slate-500 px-4 py-1.5 rounded-lg ml-auto transition-colors font-semibold disabled:opacity-50"
+          onClick={handleSend}
+          disabled={sending || !body.trim()}
+          className="flex items-center gap-1.5 text-xs text-white bg-blue-600 px-4 py-1.5 rounded-lg ml-auto hover:bg-blue-700 disabled:opacity-50 transition-colors font-semibold"
         >
-          <MailWarning size={11} />
-          Send in Gmail
+          <Send size={11} />
+          {sending ? 'Sending…' : 'Send'}
         </button>
       </div>
     </div>
