@@ -30,8 +30,13 @@ export async function POST(req: NextRequest) {
   }
   if (cc?.length)  nylasBody.cc  = (cc as string[]).map(e => ({ email: e }))
   if (bcc?.length) nylasBody.bcc = (bcc as string[]).map(e => ({ email: e }))
-  // reply_to_message_id omitted: Nylas/Gmail returns "Invalid id value" for certain message IDs;
-  // Gmail threads automatically via the Re: subject prefix, so this is not needed for correct threading.
+  // Only set reply_to_message_id for real Nylas IDs. Synthetic local_/draft_ IDs cannot
+  // be resolved by Nylas and would cause a 400 "Invalid id value" from the Gmail provider.
+  if (replyToNylasMessageId &&
+      !replyToNylasMessageId.startsWith('local_') &&
+      !replyToNylasMessageId.startsWith('draft_')) {
+    nylasBody.reply_to_message_id = replyToNylasMessageId
+  }
 
   const res = await fetch(`${nylasBase}/v3/grants/${grantId}/messages/send`, {
     method: 'POST',
