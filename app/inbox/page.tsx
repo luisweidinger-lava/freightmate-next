@@ -158,17 +158,15 @@ async function nylasMove(email: EmailMessage, folder: 'TRASH' | 'SPAM') {
 // ─── Triage panel ─────────────────────────────────────────────────────────────
 
 function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => void }) {
-  const [refInput, setRefInput] = useState('')
-  const [linking, setLinking]   = useState(false)
-  const [creating, setCreating] = useState(false)
+  const [refInput, setRefInput]       = useState('')
+  const [linking, setLinking]         = useState(false)
+  const [creating, setCreating]       = useState(false)
+  const [showTypeModal, setShowTypeModal] = useState(false)
   const router = useRouter()
 
-  // Shared: upsert a case_channel and set channel_id on the email
-  async function attachEmailToCase(caseId: string) {
-    const { data: clientRow } = await supabase
-      .from('clients').select('id').eq('email', email.sender_email ?? '').maybeSingle()
-    const channelType = clientRow ? 'client' : 'vendor'
-
+  // Shared: upsert a case_channel and set channel_id on the email.
+  // channelType is required — caller must supply it (no fallback lookup).
+  async function attachEmailToCase(caseId: string, channelType: 'client' | 'vendor') {
     const { data: chanData, error: chanError } = await supabase
       .from('case_channels')
       .upsert({
@@ -205,15 +203,20 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
       setLinking(false)
       return
     }
-    await attachEmailToCase(caseData.id)
+    // For linking to an existing case, check clients table to infer channel type
+    const { data: clientRow } = await supabase
+      .from('clients').select('id').eq('email', email.sender_email ?? '').maybeSingle()
+    await attachEmailToCase(caseData.id, clientRow ? 'client' : 'vendor')
     toast.success(`Email linked to ${formatRef(caseData.ref_number)}`)
     setLinking(false)
     onDone()
   }
 
-  async function createCase() {
-    if (!refInput.trim()) return
+  async function handleTypeSelected(type: 'client' | 'vendor') {
+    setShowTypeModal(false)
     setCreating(true)
+
+    // 1. Create the case
     const { data: newCase, error } = await supabase
       .from('shipment_cases')
       .insert({ ref_number: refInput.trim(), client_email: email.sender_email || '', status: 'new' })
@@ -225,7 +228,37 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
       setCreating(false)
       return
     }
-    await attachEmailToCase(newCase.id)
+
+    // 2. Create CRM contact record so the sender is known going forward
+    const { data: contact } = await supabase.from('contacts').insert({
+      email:        email.sender_email || '',
+      display_name: null,
+      persona:      type,
+      is_validated: true,
+      needs_review: false,
+    }).select().single()
+
+    if (contact) {
+      if (type === 'client') {
+        await supabase.from('clients').insert({
+          contact_id: contact.id,
+          email:      email.sender_email || '',
+          is_active:  true,
+        })
+      } else {
+        await supabase.from('vendors').insert({
+          contact_id:   contact.id,
+          name:         email.sender_email || '',
+          email:        email.sender_email || '',
+          default_mode: 'air',
+          is_active:    true,
+        })
+      }
+    }
+
+    // 3. Attach email to the correct thread
+    await attachEmailToCase(newCase.id, type)
+
     toast.success(`Case created: ${formatRef(refInput.trim())}`)
     setCreating(false)
     onDone()
@@ -233,61 +266,93 @@ function TriagePanel({ email, onDone }: { email: EmailMessage; onDone: () => voi
   }
 
   return (
-    <div className="border-t border-slate-200 bg-slate-50/50 px-5 py-4 space-y-3">
-      <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-        <AlertTriangle size={13} className="text-slate-500" /> Triage required — email not linked to any case
-      </p>
+    <>
+      {/* Client / Vendor modal */}
+      {showTypeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 w-80 space-y-4">
+            <p className="text-sm font-semibold text-gray-800">Who is this sender?</p>
+            <p className="text-xs text-gray-500 break-all">{email.sender_email}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleTypeSelected('client')}
+                className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Client
+              </button>
+              <button
+                onClick={() => handleTypeSelected('vendor')}
+                className="flex-1 py-2.5 text-sm font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+              >
+                Vendor
+              </button>
+            </div>
+            <button
+              onClick={() => setShowTypeModal(false)}
+              className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder="Ref number (e.g. 354830)"
-          value={refInput}
-          onChange={e => setRefInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && linkToCase()}
-          className="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white"
-        />
-        <button
-          onClick={linkToCase}
-          disabled={linking || !refInput.trim()}
-          title="Link to existing case"
-          className="flex items-center gap-1.5 text-xs px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
-        >
-          <Link2 size={11} /> {linking ? 'Linking…' : 'Link'}
-        </button>
-        <button
-          onClick={createCase}
-          disabled={creating || !refInput.trim()}
-          title="Create new case"
-          className="flex items-center gap-1.5 text-xs px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
-        >
-          <Plus size={11} /> {creating ? 'Creating…' : 'New case'}
-        </button>
-      </div>
+      <div className="border-t border-slate-200 bg-slate-50/50 px-5 py-4 space-y-3">
+        <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+          <AlertTriangle size={13} className="text-slate-500" /> Triage required — email not linked to any case
+        </p>
 
-      <div className="flex gap-2">
-        <button
-          onClick={async () => {
-            await nylasMove(email, 'SPAM')
-            await supabase.from('email_messages').update({ folder: 'spam' }).eq('id', email.id)
-            onDone()
-          }}
-          className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-1"
-        >
-          <AlertOctagon size={11} /> Spam
-        </button>
-        <button
-          onClick={async () => {
-            await nylasMove(email, 'TRASH')
-            await supabase.from('email_messages').update({ folder: 'bin' }).eq('id', email.id)
-            onDone()
-          }}
-          className="text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-red-50 transition-colors flex items-center gap-1"
-        >
-          <Trash2 size={11} /> Bin
-        </button>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Ref number (e.g. 354830)"
+            value={refInput}
+            onChange={e => setRefInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && linkToCase()}
+            className="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white"
+          />
+          <button
+            onClick={linkToCase}
+            disabled={linking || !refInput.trim()}
+            title="Link to existing case"
+            className="flex items-center gap-1.5 text-xs px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+          >
+            <Link2 size={11} /> {linking ? 'Linking…' : 'Link'}
+          </button>
+          <button
+            onClick={() => { if (refInput.trim()) setShowTypeModal(true) }}
+            disabled={creating || !refInput.trim()}
+            title="Create new case"
+            className="flex items-center gap-1.5 text-xs px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+          >
+            <Plus size={11} /> {creating ? 'Creating…' : 'New case'}
+          </button>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              await nylasMove(email, 'SPAM')
+              await supabase.from('email_messages').update({ folder: 'spam' }).eq('id', email.id)
+              onDone()
+            }}
+            className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-1"
+          >
+            <AlertOctagon size={11} /> Spam
+          </button>
+          <button
+            onClick={async () => {
+              await nylasMove(email, 'TRASH')
+              await supabase.from('email_messages').update({ folder: 'bin' }).eq('id', email.id)
+              onDone()
+            }}
+            className="text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-red-50 transition-colors flex items-center gap-1"
+          >
+            <Trash2 size={11} /> Bin
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

@@ -489,14 +489,20 @@ function CaseIntelPanel({
     setSummaryLoading(true)
     try {
       // Fire for both channels so both summaries stay current
-      await Promise.all(['client', 'vendor'].map(channelType =>
+      const results = await Promise.all(['client', 'vendor'].map(channelType =>
         fetch('/api/request-summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ case_id: c.id, channel_type: channelType }),
         })
       ))
-      toast.success('Generating summary…')
+      const failed = results.find(r => !r.ok)
+      if (failed) {
+        const errData = await failed.json().catch(() => ({}))
+        toast.error(`Summary update failed: ${errData.error ?? failed.statusText}`)
+      } else {
+        toast.success('Generating summary — check back in ~30s')
+      }
     } catch {
       toast.error('Summary update failed')
     } finally {
