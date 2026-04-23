@@ -97,8 +97,10 @@ export interface EmailMessage {
 export interface CaseChannel {
   id:              string
   case_id:         string
-  channel_type:    'client' | 'vendor'
+  channel_type:    'client' | 'vendor' | 'other'
   party_email:     string
+  label:           string | null
+  position:        number
   nylas_thread_id: string | null
   cc_emails:       string[]
   last_message_at:         string | null
@@ -141,6 +143,12 @@ export interface MessageDraft {
   updated_at:        string
 }
 
+export interface Milestone {
+  position:  number
+  label:     string
+  completed: boolean
+}
+
 export interface ThreadSummary {
   id:                    string
   case_id:               string
@@ -156,6 +164,7 @@ export interface ThreadSummary {
   model_used:            string | null
   input_tokens:          number | null
   output_tokens:         number | null
+  milestones:            Milestone[]
   updated_at:            string
 }
 

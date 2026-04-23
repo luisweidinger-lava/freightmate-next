@@ -21,7 +21,35 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
 
-  const { to, cc, bcc, subject, body, replyToNylasMessageId, case_id, channel_id } = await req.json()
+  const { to, cc, bcc, subject, body, replyToNylasMessageId, case_id, channel_id, create_channel_label } = await req.json()
+
+  // If caller requests a new channel, create it before sending
+  let resolvedChannelId: string | null = channel_id ?? null
+  if (case_id && !channel_id && create_channel_label && to) {
+    const supabaseForChannel = createClient(supabaseUrl, supabaseKey)
+    // Find next position
+    const { data: existing } = await supabaseForChannel
+      .from('case_channels')
+      .select('position')
+      .eq('case_id', case_id)
+      .order('position', { ascending: false })
+      .limit(1)
+    const nextPosition = ((existing?.[0]?.position ?? -1) as number) + 1
+    const { data: newChannel } = await supabaseForChannel
+      .from('case_channels')
+      .insert({
+        case_id,
+        channel_type: 'other',
+        party_email:  to,
+        label:        create_channel_label,
+        position:     nextPosition,
+        cc_emails:    cc ?? [],
+        message_count: 0,
+      })
+      .select('id')
+      .single()
+    resolvedChannelId = newChannel?.id ?? null
+  }
 
   const nylasBody: Record<string, unknown> = {
     to:      [{ email: to }],
@@ -74,7 +102,7 @@ export async function POST(req: NextRequest) {
     has_attachments:  false,
     is_processed:     true,
     case_id:          case_id ?? null,
-    channel_id:       channel_id ?? null,
+    channel_id:       resolvedChannelId,
     created_at:       new Date().toISOString(),
     visibility:       'internal',
   })
