@@ -2,23 +2,29 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Mail, Briefcase, LayoutDashboard, Users, BarChart2, Settings } from 'lucide-react'
+import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, Settings } from 'lucide-react'
 
 const ITEMS = [
   { href: '/inbox',     icon: Mail,            label: 'Mail' },
-  { href: '/cases',     icon: Briefcase,       label: 'Cases' },
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/workbench', icon: Briefcase,       label: 'Workbench' },
+  { href: '/cases',     icon: FolderOpen,      label: 'Cases' },
   { href: '/crm',       icon: Users,           label: 'CRM' },
   { href: '/reports',   icon: BarChart2,       label: 'Reports' },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
 ] as const
 
-const EMAIL_ROUTES = ['/inbox', '/sent', '/starred', '/drafts', '/spam', '/bin']
+const EMAIL_ROUTES = ['/inbox', '/sent', '/starred', '/drafts', '/spam', '/bin', '/archive']
 
 export default function AppRail() {
   const pathname = usePathname()
 
   function isActive(href: string) {
-    if (href === '/inbox') return EMAIL_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))
+    if (href === '/inbox')
+      return EMAIL_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))
+    if (href === '/workbench')
+      return pathname === '/workbench' || pathname.startsWith('/workbench/') || pathname.startsWith('/cases/')
+    if (href === '/cases')
+      return pathname === '/cases'
     return pathname === href || pathname.startsWith(href + '/')
   }
 
