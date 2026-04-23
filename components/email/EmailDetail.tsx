@@ -1,0 +1,344 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  Send, ChevronDown, ChevronRight, Trash2,
+  ReplyAll, Forward, Star, AlertOctagon,
+  AlertTriangle, Link2, Plus, X,
+} from 'lucide-react'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { EmailMessage, ShipmentCase } from '@/lib/types'
+import InlineReply from '@/components/email/InlineReply'
+import ThreadView, { ThreadSummaryStrip } from '@/components/email/ThreadView'
+import { toast } from 'sonner'
+import { formatRef } from '@/lib/utils'
+
+function statusPillClass(status: string | undefined): string {
+  if (!status) return 'neutral'
+  if (['delivered', 'client_confirmed'].includes(status)) return 'ok'
+  if (['in_transit', 'booked'].includes(status)) return 'info'
+  if (['quote_received', 'vendor_requested'].includes(status)) return 'high'
+  return 'neutral'
+}
+
+function statusLabel(status: string | undefined): string {
+  return ({
+    delivered: 'Delivered', client_confirmed: 'Confirmed',
+    in_transit: 'In transit', booked: 'Booked',
+    quote_received: 'Quote received', vendor_requested: 'Vendor requested',
+  } as Record<string, string>)[status || ''] || (status || '—')
+}
+
+async function nylasMove(email: EmailMessage, folder: 'TRASH' | 'SPAM') {
+  const id = email.nylas_message_id
+  if (!id || id.startsWith('local_') || id.startsWith('draft_')) return
+  try {
+    await fetch('/api/nylas-move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId: id, folder }),
+    })
+  } catch { /* fire-and-forget */ }
+}
+
+// ── Triage block ─────────────────────────────────────────────────────────────
+
+function TriageBlock({ email, onDone }: { email: EmailMessage; onDone: () => void }) {
+  const [refInput, setRefInput] = useState('')
+  const [linking, setLinking] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [showTypeModal, setShowTypeModal] = useState(false)
+  const router = useRouter()
+
+  async function attachEmailToCase(caseId: string, channelType: 'client' | 'vendor') {
+    const { data: chanData, error } = await supabase
+      .from('case_channels')
+      .upsert({
+        case_id: caseId, channel_type: channelType,
+        party_email: email.sender_email || '',
+        nylas_thread_id: email.nylas_thread_id || null,
+      }, { onConflict: 'case_id,channel_type' })
+      .select('id').single()
+    if (error || !chanData) { toast.error('Could not create channel link'); return }
+    await supabase.from('email_messages')
+      .update({ case_id: caseId, channel_id: chanData.id, is_processed: true })
+      .eq('id', email.id)
+  }
+
+  async function linkToCase() {
+    if (!refInput.trim()) return
+    setLinking(true)
+    const { data: caseData } = await supabase
+      .from('shipment_cases').select('id,ref_number')
+      .eq('ref_number', refInput.trim()).maybeSingle()
+    if (!caseData) { toast.error(`No case found with Ref ${refInput.trim()}`); setLinking(false); return }
+    const { data: clientRow } = await supabase
+      .from('clients').select('id').eq('email', email.sender_email ?? '').maybeSingle()
+    await attachEmailToCase(caseData.id, clientRow ? 'client' : 'vendor')
+    toast.success(`Linked to ${formatRef(caseData.ref_number)}`)
+    setLinking(false)
+    onDone()
+  }
+
+  async function handleTypeSelected(type: 'client' | 'vendor') {
+    setShowTypeModal(false)
+    setCreating(true)
+    const { data: newCase, error } = await supabase
+      .from('shipment_cases')
+      .insert({ ref_number: refInput.trim(), client_email: email.sender_email || '', status: 'new' })
+      .select().single()
+    if (error || !newCase) { toast.error('Could not create case — check Ref is unique'); setCreating(false); return }
+    const { data: contact } = await supabase.from('contacts').insert({
+      email: email.sender_email || '', display_name: null, persona: type, is_validated: true, needs_review: false,
+    }).select().single()
+    if (contact) {
+      if (type === 'client') {
+        await supabase.from('clients').insert({ contact_id: contact.id, email: email.sender_email || '', is_active: true })
+      } else {
+        await supabase.from('vendors').insert({ contact_id: contact.id, name: email.sender_email || '', email: email.sender_email || '', default_mode: 'air', is_active: true })
+      }
+    }
+    await attachEmailToCase(newCase.id, type)
+    toast.success(`Case created: ${formatRef(refInput.trim())}`)
+    setCreating(false)
+    onDone()
+    router.push(`/cases/${refInput.trim()}`)
+  }
+
+  return (
+    <>
+      {showTypeModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
+          <div style={{ background: 'white', borderRadius: 8, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', padding: 24, width: 300 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Who is this sender?</p>
+            <p style={{ fontSize: 12, color: 'var(--es-n-400)', marginBottom: 16, wordBreak: 'break-all' }}>{email.sender_email}</p>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <button onClick={() => handleTypeSelected('client')} className="es-rbtn primary" style={{ flex: 1, justifyContent: 'center' }}>Client</button>
+              <button onClick={() => handleTypeSelected('vendor')} className="es-rbtn" style={{ flex: 1, justifyContent: 'center', background: '#5B4EE8', color: 'white', borderColor: '#5B4EE8' }}>Vendor</button>
+            </div>
+            <button onClick={() => setShowTypeModal(false)} style={{ width: '100%', fontSize: 11, color: 'var(--es-n-400)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+      <div className="es-triage-bar">
+        <div className="es-triage-title">
+          <AlertTriangle size={13} /> No case linked — triage this email
+        </div>
+        <div className="es-triage-row">
+          <input
+            placeholder="Ref number (e.g. 354830)"
+            value={refInput}
+            onChange={e => setRefInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && linkToCase()}
+          />
+          <button className="es-rbtn" onClick={linkToCase} disabled={linking || !refInput.trim()}>
+            <Link2 size={12} /> {linking ? 'Linking…' : 'Link to case'}
+          </button>
+          <button className="es-rbtn primary" onClick={() => { if (refInput.trim()) setShowTypeModal(true) }} disabled={creating || !refInput.trim()}>
+            <Plus size={12} /> {creating ? 'Creating…' : 'Create new case'}
+          </button>
+          <button className="es-rbtn" onClick={async () => {
+            await nylasMove(email, 'SPAM')
+            await supabase.from('email_messages').update({ folder: 'spam' }).eq('id', email.id)
+            onDone()
+          }}>
+            <AlertOctagon size={12} /> Spam
+          </button>
+          <button className="es-rbtn" onClick={async () => {
+            await nylasMove(email, 'TRASH')
+            await supabase.from('email_messages').update({ folder: 'bin' }).eq('id', email.id)
+            onDone()
+          }}>
+            <Trash2 size={12} /> Bin
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── EmailDetail ───────────────────────────────────────────────────────────────
+
+// SummaryData = ThreadSummaryStrip (imported from ThreadView)
+
+export interface EmailDetailProps {
+  email: EmailMessage
+  onClose: () => void
+  onAction: () => void
+}
+
+export default function EmailDetail({ email, onClose, onAction }: EmailDetailProps) {
+  const [thread, setThread] = useState<EmailMessage[]>([])
+  const [compose, setCompose] = useState<{ mode: 'reply' | 'replyAll' | 'forward' } | null>(null)
+  const [caseInfo, setCaseInfo] = useState<ShipmentCase | null>(null)
+  const [summary, setSummary] = useState<ThreadSummaryStrip | null>(null)
+
+  // Load thread
+  useEffect(() => {
+    async function loadThread() {
+      if (!email.nylas_thread_id) { setThread([]); return }
+      const { data } = await supabase
+        .from('email_messages').select('*')
+        .eq('nylas_thread_id', email.nylas_thread_id)
+        .order('created_at', { ascending: true })
+      const msgs = (data || []) as EmailMessage[]
+      setThread(msgs.length > 1 ? msgs : [])
+    }
+    loadThread()
+  }, [email.id, email.nylas_thread_id])
+
+  // Load case info + summary when case is linked
+  const loadCaseData = useCallback(async () => {
+    if (!email.case_id) { setCaseInfo(null); setSummary(null); return }
+    const [caseRes, summaryRes] = await Promise.all([
+      supabase.from('shipment_cases').select('*').eq('id', email.case_id).maybeSingle(),
+      supabase.from('thread_summaries').select('summary_text,tone,open_questions,communication_risks')
+        .eq('case_id', email.case_id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    setCaseInfo((caseRes.data as ShipmentCase | null) || null)
+    setSummary(summaryRes.data || null)
+  }, [email.case_id])
+
+  useEffect(() => { loadCaseData() }, [loadCaseData])
+
+  async function toggleStar() {
+    await supabase.from('email_messages').update({ is_starred: !email.is_starred }).eq('id', email.id)
+    onAction()
+  }
+  async function markSpam() {
+    await nylasMove(email, 'SPAM')
+    await supabase.from('email_messages').update({ folder: 'spam' }).eq('id', email.id)
+    toast.success('Moved to spam')
+    onAction(); onClose()
+  }
+  async function moveToBin() {
+    await nylasMove(email, 'TRASH')
+    await supabase.from('email_messages').update({ folder: 'bin', is_starred: false }).eq('id', email.id)
+    toast.success('Moved to bin')
+    onAction(); onClose()
+  }
+
+  const displayThread = thread.length > 1 ? thread : null
+  const latestMsg = displayThread ? displayThread[displayThread.length - 1] : email
+  const replySubject = email.subject?.startsWith('RE:') ? email.subject : `RE: ${email.subject || ''}`
+
+  return (
+    <div className="es-detail">
+      {/* Send bar */}
+      <div className="es-send-bar">
+        <button className="es-send-btn" onClick={() => setCompose({ mode: 'reply' })}>
+          <Send size={13} /> Reply
+          <ChevronDown size={10} className="caret" />
+        </button>
+        <div className="es-from-chip">
+          <span className="lbl">From:</span>
+          <span className="addr">freightmate58@gmail.com</span>
+          <ChevronDown size={11} style={{ color: 'var(--es-n-300)' }} />
+        </div>
+        <div className="es-bar-actions">
+          <button title="Reply all" onClick={() => setCompose({ mode: 'replyAll' })}><ReplyAll size={14} /></button>
+          <button title="Forward" onClick={() => setCompose({ mode: 'forward' })}><Forward size={14} /></button>
+          <button
+            title={email.is_starred ? 'Unstar' : 'Star'}
+            onClick={toggleStar}
+            style={email.is_starred ? { color: '#C99A00' } : {}}
+          >
+            <Star size={14} fill={email.is_starred ? 'currentColor' : 'none'} />
+          </button>
+          <button title="Spam" onClick={markSpam}><AlertOctagon size={14} /></button>
+          <button title="Move to bin" onClick={moveToBin}><Trash2 size={14} /></button>
+          <button title="Close" onClick={onClose}><X size={14} /></button>
+        </div>
+      </div>
+
+      {/* Case context ribbon */}
+      {caseInfo && (
+        <div className="es-case-ribbon">
+          <div className="es-cr-meta">
+            <span className="k">Ref</span>
+            <span className="es-ref-tag">#{caseInfo.ref_number || caseInfo.case_code}</span>
+          </div>
+          <div className="es-cr-meta">
+            <span className="k">Client</span>
+            <span className="v">{caseInfo.client_name || caseInfo.client_email}</span>
+          </div>
+          {caseInfo.origin && caseInfo.destination && (
+            <div className="es-cr-meta">
+              <span className="k">Lane</span>
+              <span className="v" style={{ fontVariantNumeric: 'tabular-nums' }}>{caseInfo.origin} → {caseInfo.destination}</span>
+            </div>
+          )}
+          {(caseInfo as any).flight && (
+            <div className="es-cr-meta">
+              <span className="k">Flight</span>
+              <span className="v" style={{ fontVariantNumeric: 'tabular-nums' }}>{(caseInfo as any).flight}</span>
+            </div>
+          )}
+          {caseInfo.weight_kg && (
+            <div className="es-cr-meta">
+              <span className="k">Weight</span>
+              <span className="v" style={{ fontVariantNumeric: 'tabular-nums' }}>{caseInfo.weight_kg.toLocaleString()} kg</span>
+            </div>
+          )}
+          {caseInfo.rate_amount && (
+            <div className="es-cr-meta">
+              <span className="k">Rate</span>
+              <span className="v" style={{ fontVariantNumeric: 'tabular-nums' }}>{caseInfo.rate_currency} {caseInfo.rate_amount.toLocaleString()}</span>
+            </div>
+          )}
+          <span className={`es-pill ${statusPillClass(caseInfo.status)}`}>{statusLabel(caseInfo.status)}</span>
+          {(caseInfo as any).priority === 'urgent' && <span className="es-pill urgent">Urgent</span>}
+          <Link href={`/cases/${caseInfo.ref_number || caseInfo.id}`} className="es-open-wb">
+            Open in Workbench <ChevronRight size={11} />
+          </Link>
+        </div>
+      )}
+
+      {/* Triage block (unmatched only) */}
+      {!email.case_id && (
+        <TriageBlock email={email} onDone={() => { onAction(); loadCaseData() }} />
+      )}
+
+      {/* Recipient + subject rows */}
+      <div className="es-recipient-row">
+        <span className="lbl">To</span>
+        <div>
+          <span className="es-chip">
+            {latestMsg.sender_email}
+            <span style={{ cursor: 'pointer', display: 'grid', placeItems: 'center', width: 16, height: 16 }}><X size={10} /></span>
+          </span>
+        </div>
+        <div className="es-cc-bcc">
+          <span>Cc</span><span>Bcc</span>
+        </div>
+      </div>
+
+      <div className="es-subject-row">
+        <div className="es-subject-text">{replySubject}</div>
+        <div className="es-draft-saved">
+          Draft saved at {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+        </div>
+      </div>
+
+      {/* Thread scroll — shared ThreadView component */}
+      <ThreadView
+        messages={displayThread || []}
+        singleEmail={!displayThread ? email : undefined}
+        summary={summary}
+        onReply={(mode) => setCompose({ mode })}
+      />
+
+      {/* Inline reply / forward */}
+      {compose && (
+        <InlineReply
+          mode={compose.mode}
+          replyTo={latestMsg}
+          onSent={() => { setCompose(null); onAction() }}
+          onDiscard={() => setCompose(null)}
+        />
+      )}
+    </div>
+  )
+}

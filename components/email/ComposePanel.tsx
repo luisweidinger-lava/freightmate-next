@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { X, Minus, Send } from 'lucide-react'
 import { EmailMessage } from '@/lib/types'
 import { extractTextPreview } from '@/lib/utils'
@@ -33,20 +33,24 @@ function buildSubject(mode: ComposeMode, original?: string): string {
 }
 
 export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelProps) {
-  const [to,      setTo]      = useState(mode === 'reply' || mode === 'replyAll' ? (replyTo?.sender_email ?? '') : '')
-  const [cc,      setCc]      = useState(mode === 'replyAll' ? (replyTo?.cc?.join(', ') ?? '') : '')
-  const [bcc,     setBcc]     = useState('')
-  const [subject, setSubject] = useState(buildSubject(mode, replyTo?.subject ?? ''))
-  const [body,    setBody]    = useState('')
-  const [showCc,  setShowCc]  = useState(mode === 'replyAll' && !!replyTo?.cc?.length)
-  const [showBcc, setShowBcc] = useState(false)
+  const [to,        setTo]        = useState(mode === 'reply' || mode === 'replyAll' ? (replyTo?.sender_email ?? '') : '')
+  const [cc,        setCc]        = useState(mode === 'replyAll' ? (replyTo?.cc?.join(', ') ?? '') : '')
+  const [bcc,       setBcc]       = useState('')
+  const [subject,   setSubject]   = useState(buildSubject(mode, replyTo?.subject ?? ''))
+  const [body,      setBody]      = useState('')
+  const [showCc,    setShowCc]    = useState(mode === 'replyAll' && !!replyTo?.cc?.length)
+  const [showBcc,   setShowBcc]   = useState(false)
   const [minimized, setMinimized] = useState(false)
-  const [sending, setSending] = useState(false)
+  const [sending,   setSending]   = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
 
   const isDirty = to.trim() || subject.trim() || body.trim()
 
+  function getBodyContent() { return bodyRef.current?.innerHTML ?? body }
+  function getBodyText()    { return bodyRef.current?.innerText  ?? body }
+
   async function handleSend() {
-    if (!to.trim() || !body.trim()) {
+    if (!to.trim() || !getBodyText().trim()) {
       toast.error('To and body are required')
       return
     }
@@ -60,7 +64,7 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
           cc:  cc  ? cc.split(',').map(s => s.trim()).filter(Boolean)  : [],
           bcc: bcc ? bcc.split(',').map(s => s.trim()).filter(Boolean) : [],
           subject,
-          body,
+          body: getBodyContent(),
           replyToNylasMessageId: replyTo?.nylas_message_id ?? null,
         }),
       })
@@ -83,144 +87,128 @@ export default function ComposePanel({ mode, replyTo, onClose }: ComposePanelPro
     onClose()
   }
 
+  // ── Minimized pill ──────────────────────────────────────────────────────────
+
   if (minimized) {
     return (
-      <div className="fixed bottom-0 right-6 z-50 w-72 bg-gray-800 text-white rounded-t-lg shadow-2xl">
-        <button
-          onClick={() => setMinimized(false)}
-          className="flex items-center justify-between w-full px-4 py-2.5 text-sm font-medium hover:bg-gray-700 rounded-t-lg transition-colors"
-        >
-          <span className="truncate">{subject || modeTitle(mode)}</span>
-          <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-            <Minus size={14} />
-            <X size={14} onClick={(e) => { e.stopPropagation(); handleDiscard() }} />
+      <div className="es-compose-panel es-minimized" onClick={() => setMinimized(false)}>
+        <div className="es-compose-header" style={{ cursor: 'pointer' }}>
+          <span className="es-ch-title">{subject || modeTitle(mode)}</span>
+          <div className="es-ch-actions" onClick={e => e.stopPropagation()}>
+            <button title="Restore"><Minus size={12} /></button>
+            <button title="Discard" onClick={handleDiscard}><X size={12} /></button>
           </div>
-        </button>
+        </div>
       </div>
     )
   }
 
+  // ── Full panel ──────────────────────────────────────────────────────────────
+
   return (
-    <div className="fixed bottom-0 right-6 z-50 w-[560px] bg-white rounded-t-xl shadow-2xl border border-gray-200 border-b-0 flex flex-col" style={{ maxHeight: '85vh' }}>
+    <div className="es-compose-panel">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-800 text-white rounded-t-xl flex-shrink-0">
-        <span className="text-sm font-medium">{modeTitle(mode)}</span>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setMinimized(true)} className="hover:text-gray-300 transition-colors">
-            <Minus size={14} />
-          </button>
-          <button onClick={handleDiscard} className="hover:text-gray-300 transition-colors">
-            <X size={14} />
-          </button>
+      <div className="es-compose-header">
+        <span className="es-ch-title">{modeTitle(mode)}</span>
+        <div className="es-ch-actions">
+          <button title="Minimise" onClick={() => setMinimized(true)}><Minus size={12} /></button>
+          <button title="Discard"  onClick={handleDiscard}><X size={12} /></button>
         </div>
       </div>
 
-      {/* Fields */}
-      <div className="border-b border-gray-200 flex-shrink-0">
+      {/* Address fields */}
+      <div className="es-compose-fields">
+
         {/* To */}
-        <div className="flex items-center border-b border-gray-100 px-4">
-          <span className="text-xs text-gray-400 w-10 flex-shrink-0">To</span>
+        <div className="es-compose-field-row">
+          <span className="es-cf-label">To</span>
           <input
             type="email"
             value={to}
             onChange={e => setTo(e.target.value)}
             placeholder="recipient@example.com"
-            className="flex-1 text-sm py-2.5 focus:outline-none"
+            autoFocus
           />
           {(!showCc || !showBcc) && (
-            <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-              {!showCc && (
-                <button onClick={() => setShowCc(true)} className="text-xs text-gray-400 hover:text-gray-600">
-                  + CC
-                </button>
-              )}
-              {!showBcc && (
-                <button onClick={() => setShowBcc(true)} className="text-xs text-gray-400 hover:text-gray-600">
-                  + BCC
-                </button>
-              )}
+            <div className="es-cf-toggles">
+              {!showCc  && <button onClick={() => setShowCc(true)}>Cc</button>}
+              {!showBcc && <button onClick={() => setShowBcc(true)}>Bcc</button>}
             </div>
           )}
         </div>
 
-        {/* CC (expandable) */}
+        {/* CC */}
         {showCc && (
-          <div className="flex items-center border-b border-gray-100 px-4">
-            <span className="text-xs text-gray-400 w-10 flex-shrink-0">CC</span>
+          <div className="es-compose-field-row">
+            <span className="es-cf-label">Cc</span>
             <input
               type="text"
               value={cc}
               onChange={e => setCc(e.target.value)}
               placeholder="cc@example.com"
-              className="flex-1 text-sm py-2.5 focus:outline-none"
             />
           </div>
         )}
 
-        {/* BCC (expandable) */}
+        {/* BCC */}
         {showBcc && (
-          <div className="flex items-center border-b border-gray-100 px-4">
-            <span className="text-xs text-gray-400 w-10 flex-shrink-0">BCC</span>
+          <div className="es-compose-field-row">
+            <span className="es-cf-label">Bcc</span>
             <input
               type="text"
               value={bcc}
               onChange={e => setBcc(e.target.value)}
               placeholder="bcc@example.com"
-              className="flex-1 text-sm py-2.5 focus:outline-none"
             />
           </div>
         )}
 
         {/* Subject */}
-        <div className="flex items-center px-4">
-          <span className="text-xs text-gray-400 w-10 flex-shrink-0">Subj</span>
+        <div className="es-compose-field-row es-subject-row">
+          <span className="es-cf-label">Subject</span>
           <input
             type="text"
             value={subject}
             onChange={e => setSubject(e.target.value)}
             placeholder="Subject"
-            className="flex-1 text-sm py-2.5 focus:outline-none font-medium"
           />
         </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <textarea
-          value={body}
-          onChange={e => setBody(e.target.value)}
-          placeholder="Write your message…"
-          className="w-full h-full min-h-[180px] text-sm px-4 py-3 focus:outline-none resize-none leading-relaxed"
+      <div className="es-compose-body-wrap">
+        <div
+          ref={bodyRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={e => setBody((e.target as HTMLElement).innerText)}
+          className="es-compose-body"
+          data-placeholder="Write your message…"
         />
 
-        {/* Quoted original */}
+        {/* Quoted original for replies/forwards */}
         {replyTo && (
-          <div className="px-4 pb-4">
-            <div className="border-l-2 border-gray-200 pl-3 text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">
-              <p className="font-medium text-gray-500 mb-1">
-                On {new Date(replyTo.created_at).toLocaleString('en-GB')}, {replyTo.sender_email} wrote:
-              </p>
-              {extractTextPreview(replyTo.body_text || replyTo.body_preview, 600)}
-            </div>
+          <div className="es-compose-quoted">
+            <p className="es-cq-meta">
+              On {new Date(replyTo.created_at).toLocaleString('en-GB')}, {replyTo.sender_email} wrote:
+            </p>
+            {extractTextPreview(replyTo.body_text || replyTo.body_preview, 600)}
           </div>
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white flex-shrink-0">
+      {/* Footer */}
+      <div className="es-compose-footer">
         <button
+          className="es-cf-send"
           onClick={handleSend}
           disabled={sending}
-          className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
         >
-          <Send size={13} />
+          <Send size={12} />
           {sending ? 'Sending…' : 'Send'}
         </button>
-        <button
-          onClick={handleDiscard}
-          className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        >
+        <button className="es-cf-discard" onClick={handleDiscard}>
           Discard
         </button>
       </div>

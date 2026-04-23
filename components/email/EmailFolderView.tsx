@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { EmailMessage } from '@/lib/types'
 import { formatDate, extractTextPreview } from '@/lib/utils'
@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import MailBodyRenderer from '@/components/email/MailBodyRenderer'
 
-export type Folder = 'sent' | 'starred' | 'spam' | 'bin' | 'drafts'
+export type Folder = 'sent' | 'starred' | 'spam' | 'bin' | 'drafts' | 'archive'
 
 const FOLDER_LABELS: Record<Folder, string> = {
   sent:    'Sent',
@@ -17,6 +17,7 @@ const FOLDER_LABELS: Record<Folder, string> = {
   spam:    'Spam',
   bin:     'Bin',
   drafts:  'Drafts',
+  archive: 'Archive',
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -47,6 +48,22 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
   const [selected, setSelected] = useState<EmailMessage | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [listWidth, setListWidth] = useState(320)
+
+  function startDrag(e: React.MouseEvent) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = listWidth
+    function onMove(ev: MouseEvent) {
+      setListWidth(Math.max(240, Math.min(600, startW + ev.clientX - startX)))
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   async function load() {
     setLoading(true)
@@ -219,8 +236,11 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
   return (
     <div className="flex h-full">
 
-      {/* Email list */}
-      <div className={cn('flex flex-col border-r border-gray-200 bg-white', selected ? 'w-80 flex-shrink-0' : 'flex-1')}>
+      {/* Email list — always fixed width so drag handle is always usable */}
+      <div
+        className="flex flex-col border-r border-gray-200 bg-white"
+        style={{ width: listWidth, flexShrink: 0 }}
+      >
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">{FOLDER_LABELS[folder]}</h2>
           <span className="text-xs text-gray-400">{emails.length > 0 ? `${emails.length}` : ''}</span>
@@ -239,6 +259,9 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
           ))}
         </div>
       </div>
+
+      {/* Drag handle — always visible */}
+      <div className="es-drag-handle" onMouseDown={startDrag} />
 
       {/* Detail pane */}
       {selected ? (
