@@ -25,11 +25,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
   const [summary,         setSummary] = useState<ThreadSummary | null>(null)
   const [loading,         setLoading] = useState(true)
   const [activeDot,       setActiveDot] = useState(0)
-  const [intelOpen,       setIntelOpen] = useState(true)
+  const [intelOpen,       setIntelOpen] = useState<boolean>(() => loadIntelOpen())
   const carouselRef = useRef<HTMLDivElement>(null)
-
-  // Load intel panel open state from localStorage after mount
-  useEffect(() => { setIntelOpen(loadIntelOpen()) }, [])
 
   function toggleIntel() {
     setIntelOpen(v => {

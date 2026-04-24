@@ -4,10 +4,11 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import Ribbon from './Ribbon'
 import ComposePanel from '@/components/email/ComposePanel'
+import { useCompose } from '@/lib/compose-context'
 
 export default function ShellActions() {
-  const [syncing,   setSyncing]   = useState(false)
-  const [composing, setComposing] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const { composeState, open, close } = useCompose()
 
   async function handleSync() {
     setSyncing(true)
@@ -27,10 +28,14 @@ export default function ShellActions() {
       <Ribbon
         onSync={handleSync}
         syncing={syncing}
-        onNewMessage={() => setComposing(true)}
+        onNewMessage={() => open()}
       />
-      {composing && (
-        <ComposePanel mode="compose" onClose={() => setComposing(false)} />
+      {composeState && (
+        <ComposePanel
+          mode="compose"
+          initialDraft={composeState.draft}
+          onClose={close}
+        />
       )}
     </>
   )

@@ -40,13 +40,14 @@ const GROUP_ORDER = ['Today', 'Yesterday', 'This week', 'Older']
 // ── Mail item ─────────────────────────────────────────────────────────────────
 
 function MailItem({
-  email, selected, checked, onSelect, onCheck,
+  email, selected, checked, onSelect, onCheck, onStar,
 }: {
   email: EmailMessage
   selected: boolean
   checked: boolean
   onSelect: () => void
   onCheck: (id: string, checked: boolean) => void
+  onStar?: (email: EmailMessage) => void
 }) {
   const [hovering, setHovering] = useState(false)
 
@@ -100,7 +101,12 @@ function MailItem({
           {(email as any).priority === 'high' && (
             <span className="es-priority-dot high" title="High" />
           )}
-          {email.is_starred && <Star size={12} style={{ color: '#C99A00', fill: '#C99A00', flexShrink: 0 }} />}
+          <button
+            className={`es-star-btn${email.is_starred ? ' starred' : ''}`}
+            onClick={e => { e.stopPropagation(); onStar?.(email) }}
+          >
+            <Star size={12} style={email.is_starred ? { color: '#C99A00', fill: '#C99A00' } : undefined} />
+          </button>
           {email.has_attachments && <Paperclip size={12} style={{ color: 'var(--es-n-300)', flexShrink: 0 }} />}
           <span className="es-time">{timeOnly(email.created_at)}</span>
         </div>
@@ -144,11 +150,12 @@ export interface EmailListProps {
   onBulkSpam: () => void
   onBulkBin: () => void
   onClearSelection: () => void
+  onStar?: (email: EmailMessage) => void
 }
 
 export default function EmailList({
   emails, selected, selectedIds, loading, filter, style,
-  onSelect, onCheck, onBulkRead, onBulkSpam, onBulkBin, onClearSelection,
+  onSelect, onCheck, onBulkRead, onBulkSpam, onBulkBin, onClearSelection, onStar,
 }: EmailListProps) {
   const [focusedTab, setFocusedTab] = useState<'focused' | 'other'>('focused')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -239,6 +246,7 @@ export default function EmailList({
                   checked={selectedIds.has(email.id)}
                   onSelect={() => onSelect(email)}
                   onCheck={onCheck}
+                  onStar={onStar}
                 />
               ))}
             </div>

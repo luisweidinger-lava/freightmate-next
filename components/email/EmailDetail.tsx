@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Send, ChevronDown, ChevronRight, Trash2,
   ReplyAll, Forward, Star, AlertOctagon,
-  AlertTriangle, Link2, Plus, X,
+  AlertTriangle, Link2, Plus, X, User, Lightbulb,
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -41,6 +41,94 @@ async function nylasMove(email: EmailMessage, folder: 'TRASH' | 'SPAM') {
       body: JSON.stringify({ messageId: id, folder }),
     })
   } catch { /* fire-and-forget */ }
+}
+
+// ── Persona block ────────────────────────────────────────────────────────────
+
+const CONSUMER_DOMAINS = new Set([
+  'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com',
+  'icloud.com', 'me.com', 'live.com', 'msn.com', 'aol.com',
+  'protonmail.com', 'googlemail.com',
+])
+
+function PersonaBlock({ email, onDone }: { email: EmailMessage; onDone: () => void }) {
+  const [status, setStatus] = useState<'loading' | 'unknown' | 'known' | 'saved'>('loading')
+  const [orgSuggestion, setOrgSuggestion] = useState<{ name: string; type: 'client' | 'vendor' } | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    async function check() {
+      if (!email.sender_email) { setStatus('known'); return }
+      const { data: existing } = await supabase
+        .from('contacts').select('id').eq('email', email.sender_email).maybeSingle()
+      if (existing) { setStatus('known'); return }
+      const domain = email.sender_email.split('@')[1] ?? ''
+      if (domain && !CONSUMER_DOMAINS.has(domain)) {
+        const [{ data: clientMatch }, { data: vendorMatch }] = await Promise.all([
+          supabase.from('clients').select('display_name,company_name,email').ilike('email', `%@${domain}`).limit(1).maybeSingle(),
+          supabase.from('vendors').select('name,email').ilike('email', `%@${domain}`).limit(1).maybeSingle(),
+        ])
+        if (clientMatch) {
+          setOrgSuggestion({ name: (clientMatch as any).display_name || (clientMatch as any).company_name || clientMatch.email, type: 'client' })
+        } else if (vendorMatch) {
+          setOrgSuggestion({ name: (vendorMatch as any).name || vendorMatch.email, type: 'vendor' })
+        }
+      }
+      setStatus('unknown')
+    }
+    check()
+  }, [email.id, email.sender_email])
+
+  async function classify(persona: 'client' | 'vendor' | 'general', needsReview: boolean) {
+    if (saving) return
+    setSaving(true)
+    const { data: contact, error } = await supabase.from('contacts').upsert({
+      email: email.sender_email || '',
+      display_name: null,
+      persona,
+      is_validated: !needsReview,
+      needs_review: needsReview,
+    }, { onConflict: 'email' }).select().single()
+    if (error) { toast.error('Could not save contact'); setSaving(false); return }
+    if (contact && persona === 'client') {
+      await supabase.from('clients').insert({ contact_id: contact.id, email: email.sender_email || '', is_active: true })
+    } else if (contact && persona === 'vendor') {
+      await supabase.from('vendors').insert({ contact_id: contact.id, name: email.sender_email || '', email: email.sender_email || '', default_mode: 'air', is_active: true })
+    }
+    setSaving(false)
+    setStatus('saved')
+    onDone()
+  }
+
+  if (status !== 'unknown') return null
+
+  return (
+    <div className="es-persona-bar">
+      <div className="es-persona-header">
+        <User size={12} />
+        Unknown sender: <strong>{email.sender_email}</strong>
+      </div>
+      {orgSuggestion && (
+        <div className="es-persona-suggestion">
+          <Lightbulb size={11} />
+          Domain match: <strong>{orgSuggestion.name}</strong>
+          <span className={`es-pill ${orgSuggestion.type === 'client' ? 'ok' : 'info'}`}>{orgSuggestion.type}</span>
+          <button className="es-rbtn" onClick={() => classify(orgSuggestion.type, false)} disabled={saving}>
+            Confirm match
+          </button>
+        </div>
+      )}
+      <div className="es-persona-row">
+        <span className="es-persona-label">Who is this contact?</span>
+        <button className="es-rbtn primary" onClick={() => classify('client', false)} disabled={saving}>Client</button>
+        <button className="es-rbtn es-rbtn-vendor" onClick={() => classify('vendor', false)} disabled={saving}>Vendor</button>
+        <button className="es-rbtn" onClick={() => classify('general', false)} disabled={saving}>Other</button>
+        <button className="es-rbtn es-persona-skip" onClick={() => classify('general', true)} disabled={saving}>
+          Skip for now <ChevronRight size={10} />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ── Triage block ─────────────────────────────────────────────────────────────
@@ -299,6 +387,11 @@ export default function EmailDetail({ email, onClose, onAction }: EmailDetailPro
       {/* Triage block (unmatched only) */}
       {!email.case_id && (
         <TriageBlock email={email} onDone={() => { onAction(); loadCaseData() }} />
+      )}
+
+      {/* Persona clarification (unmatched + unknown sender) */}
+      {!email.case_id && (
+        <PersonaBlock email={email} onDone={onAction} />
       )}
 
       {/* Recipient + subject rows */}
