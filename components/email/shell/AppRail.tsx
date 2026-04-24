@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, Settings } from 'lucide-react'
+import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard } from 'lucide-react'
 
 const ITEMS = [
   { href: '/inbox',     icon: Mail,            label: 'Mail' },
@@ -31,14 +31,11 @@ export default function AppRail() {
   return (
     <div className="es-app-rail">
       {ITEMS.map(({ href, icon: Icon, label }) => (
-        <Link key={href} href={href} title={label} style={{ display: 'contents' }}>
-          <button className={isActive(href) ? 'active' : ''}>
-            <Icon size={16} strokeWidth={1.5} />
-          </button>
+        <Link key={href} href={href} aria-label={label} className={isActive(href) ? 'active' : ''}>
+          <Icon size={16} strokeWidth={1.5} />
         </Link>
       ))}
       <div className="spacer" />
-      <button title="Settings"><Settings size={16} strokeWidth={1.5} /></button>
     </div>
   )
 }

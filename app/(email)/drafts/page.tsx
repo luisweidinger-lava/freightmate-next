@@ -5,12 +5,13 @@ import { supabase } from '@/lib/supabase'
 import { MessageDraft, ShipmentCase } from '@/lib/types'
 import { formatDate, formatRef } from '@/lib/utils'
 import {
-  FileText, Check, X, RefreshCw, ChevronRight, Send,
-  User, Building2, Cpu, Clock, AlertCircle,
+  FileText, Check, X, RefreshCw, Send,
+  User, Building2, Cpu, Clock, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { useCompose } from '@/lib/compose-context'
 
 // ─── Draft status badge ───────────────────────────────────────────────────────
 
@@ -315,6 +316,23 @@ function DraftListItem({
   )
 }
 
+// ─── User draft item ──────────────────────────────────────────────────────────
+
+function UserDraftItem({ draft, onContinue }: { draft: MessageDraft; onContinue: () => void }) {
+  return (
+    <button
+      onClick={onContinue}
+      className="w-full flex items-center gap-3 px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left"
+    >
+      <Pencil size={13} className="text-gray-400 flex-shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-gray-800 truncate">{draft.subject || '(no subject)'}</p>
+        <p className="text-xs text-gray-400 truncate mt-0.5">To: {draft.recipient_email || '—'} · {formatDate(draft.created_at)}</p>
+      </div>
+    </button>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DraftsPage() {
@@ -323,6 +341,7 @@ export default function DraftsPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
   const [listWidth, setListWidth] = useState(320)
+  const { open } = useCompose()
 
   function startDrag(e: React.MouseEvent) {
     e.preventDefault()
@@ -362,7 +381,12 @@ export default function DraftsPage() {
 
   const caseMap      = Object.fromEntries(cases.map(c => [c.id, c]))
   const selectedDraft = drafts.find(d => d.id === selected) || null
-  const pendingCount  = drafts.filter(d => !d.approved_at && !d.rejected_at && !d.sent_at).length
+
+  // User-composed drafts: no AI task attached, not yet sent
+  const userDrafts = drafts.filter(d => !d.draft_task_id && !d.sent_at)
+  // AI-generated drafts
+  const aiDrafts   = drafts.filter(d => !!d.draft_task_id)
+  const pendingCount = aiDrafts.filter(d => !d.approved_at && !d.rejected_at && !d.sent_at).length
 
   return (
     <div className="flex h-full">
@@ -390,21 +414,48 @@ export default function DraftsPage() {
               <div className="w-5 h-5 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
             </div>
           )}
-          {!loading && drafts.length === 0 && (
+          {!loading && userDrafts.length === 0 && aiDrafts.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
               <FileText size={24} className="text-gray-300 mb-2" />
               <p className="text-xs text-gray-400">No drafts</p>
             </div>
           )}
-          {drafts.map(draft => (
-            <DraftListItem
-              key={draft.id}
-              draft={draft}
-              caseInfo={draft.case_id ? caseMap[draft.case_id] || null : null}
-              selected={selected === draft.id}
-              onClick={() => setSelected(draft.id)}
-            />
-          ))}
+
+          {/* User-composed drafts */}
+          {userDrafts.length > 0 && (
+            <>
+              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">My Drafts</span>
+              </div>
+              {userDrafts.map(draft => (
+                <UserDraftItem
+                  key={draft.id}
+                  draft={draft}
+                  onContinue={() => open(draft)}
+                />
+              ))}
+            </>
+          )}
+
+          {/* AI-generated drafts */}
+          {aiDrafts.length > 0 && (
+            <>
+              {userDrafts.length > 0 && (
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">AI Drafts</span>
+                </div>
+              )}
+              {aiDrafts.map(draft => (
+                <DraftListItem
+                  key={draft.id}
+                  draft={draft}
+                  caseInfo={draft.case_id ? caseMap[draft.case_id] || null : null}
+                  selected={selected === draft.id}
+                  onClick={() => setSelected(draft.id)}
+                />
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -415,8 +466,8 @@ export default function DraftsPage() {
       <div className="flex-1 bg-white overflow-hidden">
         {!selectedDraft ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center mb-3">
-              <FileText size={22} className="text-purple-400" />
+            <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center mb-3">
+              <FileText size={22} className="text-gray-400" />
             </div>
             <p className="text-sm font-medium text-gray-700">Select a draft to review</p>
             {pendingCount > 0 && (

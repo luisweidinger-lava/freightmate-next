@@ -128,6 +128,8 @@ export interface MessageDraft {
   recipient_email:   string | null
   subject:           string | null
   body_text:         string | null
+  cc_emails:         string[]
+  bcc_emails:        string[]
   version:           number
   model_used:        string | null
   prompt_tokens:     number | null

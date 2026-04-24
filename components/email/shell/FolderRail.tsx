@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   ChevronDown, ChevronRight, Inbox, Star, FileText, Send,
-  Trash2, AlertOctagon, Archive, AlertTriangle, Briefcase, Globe, Plus,
+  Trash2, AlertOctagon, Archive, AlertTriangle, Briefcase, Globe,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -38,6 +38,20 @@ function loadFavs(): string[] {
 
 function saveFavs(hrefs: string[]) {
   localStorage.setItem('fm_favourites', JSON.stringify(hrefs))
+}
+
+// Map href → icon for dynamic favourites display
+const ICON_MAP: Record<string, React.ElementType> = {
+  '/inbox':                   Inbox,
+  '/starred':                 Star,
+  '/drafts':                  FileText,
+  '/sent':                    Send,
+  '/bin':                     Trash2,
+  '/spam':                    AlertOctagon,
+  '/archive':                 Archive,
+  '/inbox?filter=unmatched':  AlertTriangle,
+  '/inbox?filter=client':     Briefcase,
+  '/inbox?filter=vendor':     Globe,
 }
 
 // Map href → label for dynamic favourites display
@@ -242,7 +256,7 @@ export default function FolderRail() {
               <RailLink
                 key={href}
                 href={href}
-                icon={Inbox}
+                icon={ICON_MAP[href] ?? Inbox}
                 label={label}
                 count={countFor(href)}
                 onCtxMenu={openCtx}
@@ -268,9 +282,6 @@ export default function FolderRail() {
           <RailLink href="/inbox?filter=vendor"    icon={Globe}         label="From vendors" count={counts.fromVendors}       onCtxMenu={openCtx} />
         </Group>
 
-        <div style={{ padding: '8px 12px', color: 'var(--es-brand)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={12} /> Add account
-        </div>
       </div>
 
       {/* ── User status ── */}

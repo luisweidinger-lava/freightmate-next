@@ -43,7 +43,10 @@ function InboxContent() {
   )
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [listWidth, setListWidth] = useState(360)
+  const LIST_WIDTH_KEY = 'fm_list_width'
+  const [listWidth, setListWidth] = useState(() => {
+    try { return Number(localStorage.getItem(LIST_WIDTH_KEY)) || 360 } catch { return 360 }
+  })
 
   // Keep ref in sync so load() can check selection without it as a dep
   useEffect(() => { selectedIdRef.current = selected?.id ?? null }, [selected])
@@ -94,11 +97,11 @@ function InboxContent() {
 
   useEffect(() => { load() }, [load])
 
-  // Realtime — auto-refresh on any email change
+  // Realtime — only INSERT events to avoid reload loop when marking as read
   useEffect(() => {
     const channel = supabase
       .channel('inbox-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_messages' }, load)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_messages' }, load)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [load])
@@ -106,9 +109,12 @@ function InboxContent() {
   // Auto-mark as read when selected
   useEffect(() => {
     if (selected && !selected.is_read) {
-      supabase.from('email_messages').update({ is_read: true }).eq('id', selected.id)
-      setSelected(prev => prev ? { ...prev, is_read: true } : null)
-      setEmails(prev => prev.map(e => e.id === selected.id ? { ...e, is_read: true } : e))
+      ;(async () => {
+        const { error } = await supabase.from('email_messages').update({ is_read: true }).eq('id', selected.id)
+        if (error) { toast.error('Failed to mark as read'); return }
+        setSelected(prev => prev ? { ...prev, is_read: true } : null)
+        setEmails(prev => prev.map(e => e.id === selected.id ? { ...e, is_read: true } : e))
+      })()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id])
@@ -145,6 +151,13 @@ function InboxContent() {
     toast.success(`${ids.length} email${ids.length > 1 ? 's' : ''} moved to spam`)
   }
 
+  async function handleStar(email: EmailMessage) {
+    const next = !email.is_starred
+    await supabase.from('email_messages').update({ is_starred: next }).eq('id', email.id)
+    setEmails(prev => prev.map(e => e.id === email.id ? { ...e, is_starred: next } : e))
+    if (selected?.id === email.id) setSelected(prev => prev ? { ...prev, is_starred: next } : null)
+  }
+
   // Client-side search filter
   const filtered = emails.filter(e =>
     !search ||
@@ -157,7 +170,9 @@ function InboxContent() {
     const startX = e.clientX
     const startW = listWidth
     function onMove(ev: MouseEvent) {
-      setListWidth(Math.max(240, Math.min(600, startW + ev.clientX - startX)))
+      const newWidth = Math.max(240, Math.min(600, startW + ev.clientX - startX))
+      setListWidth(newWidth)
+      try { localStorage.setItem(LIST_WIDTH_KEY, String(newWidth)) } catch { /* ignore */ }
     }
     function onUp() {
       document.removeEventListener('mousemove', onMove)
@@ -185,6 +200,7 @@ function InboxContent() {
         onBulkSpam={bulkSpam}
         onBulkBin={bulkBin}
         onClearSelection={clearSelection}
+        onStar={handleStar}
       />
 
       <div className="es-drag-handle" onMouseDown={startListDrag} />
