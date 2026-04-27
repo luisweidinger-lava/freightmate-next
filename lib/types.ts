@@ -19,6 +19,8 @@ export interface Database {
       vendors:         { Row: Vendor }
       clients:         { Row: Client }
       shipments:       { Row: Shipment }
+      organisations:   { Row: Organisation }
+      profiles:        { Row: Profile }
     }
   }
 }
@@ -50,6 +52,7 @@ export interface ShipmentCase {
   shipment_id:        string | null
   last_outbound_at:   string | null
   case_token:         string | null
+  operator_id:        string | null
   created_at:         string
   updated_at:         string
 }
@@ -216,8 +219,31 @@ export interface CaseContact {
   created_at:   string
 }
 
+export interface Organisation {
+  id:           string
+  name:         string
+  domain:       string
+  office_hours: OfficeHours | null
+  created_at:   string
+}
+
+export interface OfficeHours {
+  tz:   string         // IANA timezone e.g. "Europe/Berlin"
+  days: (number | null)[] // 14 values: [mon_open, mon_close, tue_open, tue_close, ...sun_open, sun_close]
+}
+
+export interface Profile {
+  id:           string
+  org_id:       string | null
+  email:        string
+  display_name: string | null
+  role:         'operator' | 'manager'
+  created_at:   string
+}
+
 export interface Mailbox {
   id:             string
+  org_id:         string | null
   name:           string
   email_address:  string
   provider:       string
