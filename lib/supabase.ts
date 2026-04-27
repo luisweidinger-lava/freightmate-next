@@ -1,8 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-// Typed results are enforced via explicit TypeScript casts at call sites (useState<T>, as T[], etc.)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const supabase = createClient<any>(supabaseUrl, supabaseAnon)
+// createBrowserClient stores the session in cookies (not localStorage) so
+// proxy.ts can read auth state server-side without a session mismatch.
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)

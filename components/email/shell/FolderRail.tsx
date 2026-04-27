@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import {
   ChevronDown, ChevronRight, Inbox, Star, FileText, Send,
   Trash2, AlertOctagon, Archive, AlertTriangle, Briefcase, Globe,
@@ -132,7 +132,7 @@ function Group({ label, open, onToggle, children }: {
 
 // ── FolderRail ───────────────────────────────────────────────────────────────
 
-export default function FolderRail() {
+function FolderRailInner() {
   const [counts,   setCounts]   = useState<Counts>({ inbox: 0, drafts: 0, urgent: 0, unmatched: 0, fromClients: 0, fromVendors: 0 })
   const [favOpen,  setFavOpen]  = useState(true)
   const [acctOpen, setAcctOpen] = useState(true)
@@ -284,12 +284,6 @@ export default function FolderRail() {
 
       </div>
 
-      {/* ── User status ── */}
-      <div className="es-user-status">
-        <span className="es-status-dot" />
-        <span>Coordinator</span>
-      </div>
-
       {/* ── Drag handle ── */}
       <div className="es-drag-handle" onMouseDown={startDrag} />
 
@@ -308,5 +302,13 @@ export default function FolderRail() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function FolderRail() {
+  return (
+    <Suspense fallback={null}>
+      <FolderRailInner />
+    </Suspense>
   )
 }

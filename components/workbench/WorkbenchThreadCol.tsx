@@ -73,9 +73,12 @@ interface Props {
   caseId: string
   caseRef: string | null
   onAction: () => void
+  onChannelCreated?: () => void
+  style?: React.CSSProperties
 }
 
-export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef, onAction }: Props) {
+export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef, onAction, onChannelCreated, style }: Props) {
+  const virtual      = channel.id.startsWith('__virtual_')
   const lastMsg      = messages.at(-1)
   const defaultSubj  = lastMsg?.subject
     ? (lastMsg.subject.startsWith('Re:') ? lastMsg.subject : `Re: ${lastMsg.subject}`)
@@ -111,7 +114,7 @@ export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef,
   }
 
   return (
-    <div className={`wb-thread-col`}>
+    <div className="wb-thread-col" style={style}>
       {/* Column header */}
       <div className={`wb-col-header ${channel.channel_type}`}>
         <span className="wb-col-header-title">{typeLabel}</span>
@@ -147,13 +150,14 @@ export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef,
 
       {/* Always-open compose area */}
       <InlineCompose
-        channelType={channel.channel_type === 'other' ? 'client' : channel.channel_type}
+        channelType={channel.channel_type}
         caseId={caseId}
-        channelId={channel.id}
+        channelId={virtual ? null : channel.id}
         defaultTo={channel.party_email}
         defaultSubject={defaultSubj}
         replyToNylasMessageId={lastMsg?.nylas_message_id ?? null}
         onSent={onAction}
+        onChannelCreated={virtual ? onChannelCreated : undefined}
       />
     </div>
   )

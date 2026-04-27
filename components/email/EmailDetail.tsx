@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Send, ChevronDown, ChevronRight, Trash2,
   ReplyAll, Forward, Star, AlertOctagon,
-  AlertTriangle, Link2, Plus, X, User, Lightbulb,
+  AlertTriangle, Link2, Plus, X, Lightbulb,
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -55,6 +55,10 @@ function PersonaBlock({ email, onDone }: { email: EmailMessage; onDone: () => vo
   const [status, setStatus] = useState<'loading' | 'unknown' | 'known' | 'saved'>('loading')
   const [orgSuggestion, setOrgSuggestion] = useState<{ name: string; type: 'client' | 'vendor' } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [showCrmModal, setShowCrmModal] = useState(false)
+  const [pendingPersona, setPendingPersona] = useState<'client' | 'vendor' | 'general' | null>(null)
+  const [fullName, setFullName] = useState('')
+  const [linkOrg, setLinkOrg] = useState(false)
 
   useEffect(() => {
     async function check() {
@@ -70,8 +74,10 @@ function PersonaBlock({ email, onDone }: { email: EmailMessage; onDone: () => vo
         ])
         if (clientMatch) {
           setOrgSuggestion({ name: (clientMatch as any).display_name || (clientMatch as any).company_name || clientMatch.email, type: 'client' })
+          setLinkOrg(true)
         } else if (vendorMatch) {
           setOrgSuggestion({ name: (vendorMatch as any).name || vendorMatch.email, type: 'vendor' })
+          setLinkOrg(true)
         }
       }
       setStatus('unknown')
@@ -79,55 +85,113 @@ function PersonaBlock({ email, onDone }: { email: EmailMessage; onDone: () => vo
     check()
   }, [email.id, email.sender_email])
 
-  async function classify(persona: 'client' | 'vendor' | 'general', needsReview: boolean) {
+  async function skipContact() {
     if (saving) return
     setSaving(true)
+    await supabase.from('contacts').upsert({
+      email: email.sender_email || '', display_name: null,
+      persona: 'general', is_validated: false, needs_review: true,
+    }, { onConflict: 'email' })
+    setSaving(false); setStatus('saved'); onDone()
+  }
+
+  async function saveContact() {
+    if (saving || !pendingPersona) return
+    setSaving(true)
+    const domain = email.sender_email?.split('@')[1] ?? ''
     const { data: contact, error } = await supabase.from('contacts').upsert({
       email: email.sender_email || '',
-      display_name: null,
-      persona,
-      is_validated: !needsReview,
-      needs_review: needsReview,
+      display_name: fullName.trim() || null,
+      persona: pendingPersona,
+      is_validated: true,
+      needs_review: false,
+      company_name: (linkOrg && orgSuggestion) ? orgSuggestion.name : null,
+      company_domain: domain || null,
     }, { onConflict: 'email' }).select().single()
     if (error) { toast.error('Could not save contact'); setSaving(false); return }
-    if (contact && persona === 'client') {
-      await supabase.from('clients').insert({ contact_id: contact.id, email: email.sender_email || '', is_active: true })
-    } else if (contact && persona === 'vendor') {
-      await supabase.from('vendors').insert({ contact_id: contact.id, name: email.sender_email || '', email: email.sender_email || '', default_mode: 'air', is_active: true })
+    if (contact && pendingPersona === 'client') {
+      await supabase.from('clients').upsert({ contact_id: contact.id, email: email.sender_email || '', is_active: true }, { onConflict: 'contact_id' })
+    } else if (contact && pendingPersona === 'vendor') {
+      await supabase.from('vendors').upsert({ contact_id: contact.id, name: fullName.trim() || email.sender_email || '', email: email.sender_email || '', default_mode: 'air', is_active: true }, { onConflict: 'contact_id' })
     }
-    setSaving(false)
-    setStatus('saved')
-    onDone()
+    setSaving(false); setShowCrmModal(false); setStatus('saved'); onDone()
+  }
+
+  function openModal(persona: 'client' | 'vendor' | 'general') {
+    setPendingPersona(persona); setFullName(''); setShowCrmModal(true)
   }
 
   if (status !== 'unknown') return null
 
+  const personaLabel = pendingPersona === 'client' ? 'Client' : pendingPersona === 'vendor' ? 'Vendor' : 'Other contact'
+
   return (
-    <div className="es-persona-bar">
-      <div className="es-persona-header">
-        <User size={12} />
-        Unknown sender: <strong>{email.sender_email}</strong>
-      </div>
-      {orgSuggestion && (
-        <div className="es-persona-suggestion">
-          <Lightbulb size={11} />
-          Domain match: <strong>{orgSuggestion.name}</strong>
-          <span className={`es-pill ${orgSuggestion.type === 'client' ? 'ok' : 'info'}`}>{orgSuggestion.type}</span>
-          <button className="es-rbtn" onClick={() => classify(orgSuggestion.type, false)} disabled={saving}>
-            Confirm match
-          </button>
+    <>
+      {showCrmModal && pendingPersona && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}
+          onKeyDown={e => e.key === 'Escape' && setShowCrmModal(false)}
+        >
+          <div style={{ background: 'white', borderRadius: 8, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', padding: 24, width: 420 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Add contact — {personaLabel}</p>
+            <p style={{ fontSize: 12, color: 'var(--es-n-400)', marginBottom: 18, wordBreak: 'break-all' }}>{email.sender_email}</p>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--es-n-500)', marginBottom: 4 }}>Full name</label>
+              <input
+                autoFocus
+                type="text"
+                placeholder="e.g. Jane Smith"
+                value={fullName}
+                onChange={e => setFullName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveContact()}
+                style={{ width: '100%', height: 32, padding: '0 10px', border: '1px solid var(--es-n-150)', borderRadius: 3, fontFamily: 'Arial, sans-serif', fontSize: 12, boxSizing: 'border-box' }}
+              />
+            </div>
+            {orgSuggestion && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, background: 'var(--es-high-bg)', border: '1px solid var(--es-high-bd)', borderRadius: 4, padding: '7px 10px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={linkOrg} onChange={e => setLinkOrg(e.target.checked)} style={{ cursor: 'pointer', flexShrink: 0 }} />
+                <Lightbulb size={11} style={{ color: 'var(--es-high)', flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: 'var(--es-high)', fontWeight: 600 }}>Link to {orgSuggestion.name}</span>
+                <span className={`es-pill ${orgSuggestion.type === 'client' ? 'ok' : 'info'}`}>{orgSuggestion.type}</span>
+              </label>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="es-rbtn primary" style={{ justifyContent: 'center', height: 34, fontSize: 13, width: '100%' }} onClick={saveContact} disabled={saving}>
+                {saving ? 'Saving…' : 'Save contact'}
+              </button>
+              <button onClick={() => { skipContact(); setShowCrmModal(false) }} style={{ width: '100%', fontSize: 11, color: 'var(--es-n-400)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+                Skip for now
+              </button>
+            </div>
+          </div>
         </div>
       )}
-      <div className="es-persona-row">
-        <span className="es-persona-label">Who is this contact?</span>
-        <button className="es-rbtn primary" onClick={() => classify('client', false)} disabled={saving}>Client</button>
-        <button className="es-rbtn es-rbtn-vendor" onClick={() => classify('vendor', false)} disabled={saving}>Vendor</button>
-        <button className="es-rbtn" onClick={() => classify('general', false)} disabled={saving}>Other</button>
-        <button className="es-rbtn es-persona-skip" onClick={() => classify('general', true)} disabled={saving}>
-          Skip for now <ChevronRight size={10} />
-        </button>
+      <div className="es-persona-bar">
+        <div className="es-persona-header">
+          <AlertTriangle size={13} />
+          Unknown sender: <strong>{email.sender_email}</strong>
+        </div>
+        {orgSuggestion && (
+          <div className="es-persona-suggestion">
+            <Lightbulb size={11} />
+            Domain match: <strong>{orgSuggestion.name}</strong>
+            <span className={`es-pill ${orgSuggestion.type === 'client' ? 'ok' : 'info'}`}>{orgSuggestion.type}</span>
+            <button className="es-rbtn" onClick={() => openModal(orgSuggestion.type)} disabled={saving}>
+              Confirm match
+            </button>
+          </div>
+        )}
+        <div className="es-persona-row">
+          <span className="es-persona-label">Who is this contact?</span>
+          <button className="es-rbtn primary" onClick={() => openModal('client')} disabled={saving}>Client</button>
+          <button className="es-rbtn es-rbtn-vendor" onClick={() => openModal('vendor')} disabled={saving}>Vendor</button>
+          <button className="es-rbtn" onClick={() => openModal('general')} disabled={saving}>Other</button>
+          <button className="es-rbtn es-persona-skip" onClick={skipContact} disabled={saving}>
+            Skip for now <ChevronRight size={10} />
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation'
 import {
   Package, Clock, AlertTriangle, MessageCircleOff, Plane, TrendingUp,
   Mail, Zap, Filter, X, ArrowRight, AlertCircle, Inbox,
-  ChevronDown, Undo2, Redo2, Sparkles, Tag, Printer, MoreHorizontal,
+  ChevronDown, Undo2, Redo2, Sparkles, Tag, Printer, MoreHorizontal, Users,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES, DASHBOARD_NAV } from '@/lib/routes'
@@ -108,16 +108,17 @@ function KpiCard({ icon: Icon, label, count, variant, onClick }: {
   )
 }
 
-function KpiStrip({ active, delayed, critical, silent }: {
-  active: number; delayed: number; critical: number; silent: number
+function KpiStrip({ active, delayed, critical, silent, crmReview }: {
+  active: number; delayed: number; critical: number; silent: number; crmReview: number
 }) {
   const router = useRouter()
   return (
     <div className="kpi-strip">
-      <KpiCard icon={Package}          label="Active Cases" count={active}   onClick={() => router.push(ROUTES.CASES)} />
-      <KpiCard icon={Clock}            label="Delayed"      count={delayed}  onClick={() => router.push(DASHBOARD_NAV.DELAYED)} />
-      <KpiCard icon={AlertTriangle}    label="Critical"     count={critical} variant="red"   onClick={() => router.push(DASHBOARD_NAV.CRITICAL)} />
-      <KpiCard icon={MessageCircleOff} label="Gone Silent"  count={silent}   variant="amber" onClick={() => router.push(DASHBOARD_NAV.SILENT)} />
+      <KpiCard icon={Package}          label="Active Cases" count={active}     onClick={() => router.push(ROUTES.CASES)} />
+      <KpiCard icon={Clock}            label="Delayed"      count={delayed}    onClick={() => router.push(DASHBOARD_NAV.DELAYED)} />
+      <KpiCard icon={AlertTriangle}    label="Critical"     count={critical}   variant="red"   onClick={() => router.push(DASHBOARD_NAV.CRITICAL)} />
+      <KpiCard icon={MessageCircleOff} label="Gone Silent"  count={silent}     variant="amber" onClick={() => router.push(DASHBOARD_NAV.SILENT)} />
+      <KpiCard icon={Users}            label="CRM Review"   count={crmReview}  variant="amber" onClick={() => router.push(`${ROUTES.CRM}?filter=review`)} />
     </div>
   )
 }
@@ -453,21 +454,24 @@ export default function DashboardPage() {
   const router  = useRouter()
   const [cases,   setCases]   = useState<ShipmentCase[]>([])
   const [emails,  setEmails]  = useState<EmailMessage[]>([])
-  const [drafts,  setDrafts]  = useState<DraftWithCase[]>([])
-  const [loading, setLoading] = useState(true)
+  const [drafts,        setDrafts]        = useState<DraftWithCase[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [crmReviewCount, setCrmReviewCount] = useState(0)
 
   useEffect(() => {
     let mounted = true
     async function load() {
-      const [{ data: casesData }, { data: emailsData }, { data: draftsData }] = await Promise.all([
+      const [{ data: casesData }, { data: emailsData }, { data: draftsData }, { count: crmCount }] = await Promise.all([
         supabase.from('shipment_cases').select('*').order('updated_at', { ascending: false }),
         supabase.from('email_messages').select('*').is('case_id', null).eq('folder', 'inbox').eq('direction', 'inbound').order('created_at', { ascending: false }),
         supabase.from('draft_tasks').select('*, shipment_cases(ref_number, client_name)').eq('status', 'ready').order('created_at', { ascending: false }),
+        supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('needs_review', true),
       ])
       if (!mounted) return
       setCases(casesData  ?? [])
       setEmails(emailsData ?? [])
       setDrafts(draftsData ?? [])
+      setCrmReviewCount(crmCount ?? 0)
       setLoading(false)
     }
     load()
@@ -505,6 +509,7 @@ export default function DashboardPage() {
           delayed={delayedCount}
           critical={criticalCount}
           silent={silentCount}
+          crmReview={crmReviewCount}
         />
         <StatusPipeline allCases={cases} />
         <NeedsActionTable cases={cases} loading={loading} />
