@@ -5,19 +5,21 @@ import { Send, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Props {
-  channelType: 'client' | 'vendor'
+  channelType: 'client' | 'vendor' | 'other'
   caseId: string
   channelId: string | null
   defaultTo: string
   defaultSubject: string
   replyToNylasMessageId?: string | null
   onSent: () => void
+  onChannelCreated?: () => void
 }
 
 export function InlineCompose({
   channelType, caseId, channelId,
-  defaultTo, defaultSubject, replyToNylasMessageId, onSent,
+  defaultTo, defaultSubject, replyToNylasMessageId, onSent, onChannelCreated,
 }: Props) {
+  const [primaryTo, setPrimaryTo] = useState(defaultTo)
   const [body,     setBody]     = useState('')
   const [subject,  setSubject]  = useState(defaultSubject)
   const [extraTo,  setExtraTo]  = useState('')
@@ -28,21 +30,23 @@ export function InlineCompose({
 
   async function handleSend() {
     if (!body.trim()) return
+    const toEmail = defaultTo || primaryTo
+    if (!toEmail.trim()) { toast.error('Enter a recipient email'); return }
     setSending(true)
     try {
-      const recipients = [defaultTo, ...extraTo.split(',').map(s => s.trim()).filter(Boolean)]
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to:                   recipients[0],
-          cc:                   cc ? cc.split(',').map(s => s.trim()).filter(Boolean) : [],
-          bcc:                  bcc ? bcc.split(',').map(s => s.trim()).filter(Boolean) : [],
+          to:                    toEmail,
+          cc:                    cc ? cc.split(',').map(s => s.trim()).filter(Boolean) : [],
+          bcc:                   bcc ? bcc.split(',').map(s => s.trim()).filter(Boolean) : [],
           subject,
           body,
           replyToNylasMessageId: replyToNylasMessageId ?? null,
-          case_id:              caseId,
-          channel_id:           channelId,
+          case_id:               caseId,
+          channel_id:            channelId,
+          create_channel_type:   channelId === null ? channelType : undefined,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -51,6 +55,7 @@ export function InlineCompose({
       } else {
         toast.success('Message sent')
         setBody('')
+        if (!channelId) onChannelCreated?.()
         onSent()
       }
     } catch (err) {
@@ -81,23 +86,38 @@ export function InlineCompose({
     }
   }
 
+  // 'other' channels use the client colour scheme in the compose area
+  const composeClass = channelType === 'other' ? 'client' : channelType
+
   return (
-    <div className={`wb-compose ${channelType}`}>
+    <div className={`wb-compose ${composeClass}`}>
       <div className="wb-compose-grid">
         {/* To */}
         <span className="wb-compose-label">To</span>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, minHeight: 22 }}>
-          <span className="wb-compose-to-chip">
-            {defaultTo || '—'}
-            <X size={9} style={{ color: 'var(--es-n-200)' }} aria-hidden />
-          </span>
-          <input
-            value={extraTo}
-            onChange={e => setExtraTo(e.target.value)}
-            placeholder="Add recipients…"
-            className="wb-compose-input"
-            style={{ flex: 1, minWidth: 120, borderBottom: 'none' }}
-          />
+          {defaultTo ? (
+            <>
+              <span className="wb-compose-to-chip">
+                {defaultTo}
+                <X size={9} style={{ color: 'var(--es-n-200)' }} aria-hidden />
+              </span>
+              <input
+                value={extraTo}
+                onChange={e => setExtraTo(e.target.value)}
+                placeholder="Add recipients…"
+                className="wb-compose-input"
+                style={{ flex: 1, minWidth: 120, borderBottom: 'none' }}
+              />
+            </>
+          ) : (
+            <input
+              value={primaryTo}
+              onChange={e => setPrimaryTo(e.target.value)}
+              placeholder="Recipient email…"
+              className="wb-compose-input"
+              style={{ flex: 1 }}
+            />
+          )}
         </div>
 
         {/* CC */}

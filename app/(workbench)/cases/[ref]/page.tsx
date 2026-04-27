@@ -1,18 +1,61 @@
 'use client'
 
-import { useEffect, useRef, useState, use } from 'react'
+import React, { useEffect, useRef, useState, use } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, RefreshCw, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, PanelRightClose, PanelRightOpen, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ShipmentCase, CaseChannel, EmailMessage, MessageDraft, ThreadSummary } from '@/lib/types'
 import { formatRef } from '@/lib/utils'
 import { WorkbenchThreadCol } from '@/components/workbench/WorkbenchThreadCol'
 import { IntelPanel } from '@/components/workbench/IntelPanel'
 
-const INTEL_KEY = 'wb_intel_open'
+const INTEL_KEY        = 'wb_intel_open'
+const INTEL_FOLDED_KEY = 'wb_intel_folded'
+const INTEL_WIDTH_KEY  = 'wb_intel_width'
+const WIDTHS_KEY       = 'wb_col_widths'
 
 function loadIntelOpen(): boolean {
   try { return localStorage.getItem(INTEL_KEY) !== 'false' } catch { return true }
+}
+
+function loadIntelFolded(): boolean {
+  try { return localStorage.getItem(INTEL_FOLDED_KEY) === 'true' } catch { return false }
+}
+
+function loadIntelWidth(): number {
+  try {
+    const v = localStorage.getItem(INTEL_WIDTH_KEY)
+    if (v) return Math.max(160, parseInt(v, 10))
+  } catch { /* ignore */ }
+  return 240
+}
+
+function loadColWidths(): number[] {
+  try {
+    const raw = localStorage.getItem(WIDTHS_KEY)
+    if (raw) return JSON.parse(raw) as number[]
+  } catch { /* ignore */ }
+  return [50, 50]
+}
+
+function saveColWidths(widths: number[]) {
+  try { localStorage.setItem(WIDTHS_KEY, JSON.stringify(widths)) } catch { /* ignore */ }
+}
+
+function virtualChannel(caseId: string, type: 'client' | 'vendor' | 'other', pos: number): CaseChannel {
+  return {
+    id:              `__virtual_${type}_${pos}`,
+    case_id:         caseId,
+    channel_type:    type,
+    party_email:     '',
+    label:           null,
+    position:        pos,
+    nylas_thread_id: null,
+    cc_emails:       [],
+    last_message_at: null,
+    message_count:   0,
+    created_at:      '',
+  }
 }
 
 export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: string }> }) {
@@ -24,9 +67,19 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
   const [draftsByChannel, setDrafts]  = useState<Record<string, MessageDraft[]>>({})
   const [summary,         setSummary] = useState<ThreadSummary | null>(null)
   const [loading,         setLoading] = useState(true)
-  const [activeDot,       setActiveDot] = useState(0)
   const [intelOpen,       setIntelOpen] = useState<boolean>(() => loadIntelOpen())
-  const carouselRef = useRef<HTMLDivElement>(null)
+  const [intelFolded,     setIntelFolded] = useState<boolean>(() => loadIntelFolded())
+  const [intelWidth,      setIntelWidth]  = useState<number>(() => loadIntelWidth())
+  const [pendingOtherPanels, setPendingOtherPanels] = useState(0)
+  const [colWidths,       setColWidths] = useState<number[]>(() => loadColWidths())
+
+  const containerRef  = useRef<HTMLDivElement>(null)
+  const colWidthsRef  = useRef<number[]>(colWidths)
+  const intelWidthRef = useRef<number>(intelWidth)
+
+  // Keep refs in sync for use inside resize closures
+  useEffect(() => { colWidthsRef.current  = colWidths  }, [colWidths])
+  useEffect(() => { intelWidthRef.current = intelWidth }, [intelWidth])
 
   function toggleIntel() {
     setIntelOpen(v => {
@@ -34,6 +87,37 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
       try { localStorage.setItem(INTEL_KEY, String(next)) } catch { /* ignore */ }
       return next
     })
+  }
+
+  function toggleIntelFold() {
+    setIntelFolded(v => {
+      const next = !v
+      try { localStorage.setItem(INTEL_FOLDED_KEY, String(next)) } catch { /* ignore */ }
+      return next
+    })
+  }
+
+  function startIntelResize(e: React.MouseEvent) {
+    e.preventDefault()
+    const startX     = e.clientX
+    const startWidth = intelWidthRef.current
+    let   currentWidth = startWidth
+
+    function onMove(ev: MouseEvent) {
+      // Panel is on the right — dragging left widens it
+      const next = Math.max(160, Math.min(600, startWidth + (startX - ev.clientX)))
+      currentWidth = next
+      setIntelWidth(next)
+    }
+
+    function onUp() {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup',   onUp)
+      try { localStorage.setItem(INTEL_WIDTH_KEY, String(currentWidth)) } catch { /* ignore */ }
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup',   onUp)
   }
 
   async function load() {
@@ -91,14 +175,45 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref])
 
-  function handleCarouselScroll() {
-    const el = carouselRef.current
-    if (!el || channels.length === 0) return
-    setActiveDot(Math.min(Math.round(el.scrollLeft / 348), channels.length - 1))
-  }
+  // Normalise column widths when panel count changes
+  useEffect(() => {
+    if (!shipmentCase) return
+    const otherCount = channels.filter(c => c.channel_type === 'other').length
+    const n = 2 + otherCount + pendingOtherPanels
+    setColWidths(prev => {
+      if (prev.length === n) return prev
+      const eq = 100 / n
+      const next = Array<number>(n).fill(eq)
+      saveColWidths(next)
+      return next
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channels, pendingOtherPanels, shipmentCase])
 
-  function scrollToCol(i: number) {
-    carouselRef.current?.scrollTo({ left: i * 348, behavior: 'smooth' })
+  function startResize(i: number, e: React.MouseEvent) {
+    e.preventDefault()
+    const containerW = containerRef.current!.getBoundingClientRect().width
+    const startX     = e.clientX
+    const startWidths = [...colWidthsRef.current]
+    let currentWidths = startWidths
+
+    function onMove(ev: MouseEvent) {
+      const delta = ((ev.clientX - startX) / containerW) * 100
+      const next  = [...startWidths]
+      next[i]     = Math.max(15, startWidths[i]     + delta)
+      next[i + 1] = Math.max(15, startWidths[i + 1] - delta)
+      currentWidths = next
+      setColWidths(next)
+    }
+
+    function onUp() {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup',   onUp)
+      saveColWidths(currentWidths)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup',   onUp)
   }
 
   // ── Loading / not-found states ────────────────────────────────────────────────
@@ -120,10 +235,23 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
     )
   }
 
+  // Derive display channels — always show client + vendor (virtual if no DB row)
+  const clientCh = channels.find(c => c.channel_type === 'client')
+  const vendorCh = channels.find(c => c.channel_type === 'vendor')
+  const otherChs = channels.filter(c => c.channel_type === 'other')
+  const displayChannels: CaseChannel[] = [
+    clientCh ?? virtualChannel(shipmentCase.id, 'client', 0),
+    vendorCh ?? virtualChannel(shipmentCase.id, 'vendor', 1),
+    ...otherChs,
+    ...Array.from({ length: pendingOtherPanels }, (_, i) =>
+      virtualChannel(shipmentCase.id, 'other', otherChs.length + i + 2)
+    ),
+  ]
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* Case context bar — sits just below TitleBar inside the content column */}
+      {/* Case context bar */}
       <div className="wb-topbar">
         <Link href="/cases" className="wb-topbar-btn" title="All cases">
           <ChevronLeft size={15} />
@@ -157,51 +285,64 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
         </div>
       </div>
 
-      {/* Main body: carousel + intel */}
+      {/* Main body */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', background: 'var(--es-n-25)' }}>
 
-        {/* Thread carousel + dots */}
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-          <div
-            className="wb-thread-carousel"
-            ref={carouselRef}
-            onScroll={handleCarouselScroll}
-          >
-            {channels.length === 0 ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', color: 'var(--es-n-300)', fontSize: 13 }}>
-                No channels yet
-              </div>
-            ) : channels.map(ch => (
+        {/* Thread panels */}
+        <div ref={containerRef} style={{ display: 'flex', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          {displayChannels.map((ch, i) => (
+            <div key={ch.id} style={{ display: 'flex', width: `${colWidths[i] ?? (100 / displayChannels.length)}%`, flexShrink: 0, minWidth: 0, height: '100%' }}>
               <WorkbenchThreadCol
-                key={ch.id}
                 channel={ch}
-                messages={msgsByChannel[ch.id] || []}
-                drafts={draftsByChannel[ch.id] || []}
+                messages={ch.id.startsWith('__virtual_') ? [] : (msgsByChannel[ch.id] || [])}
+                drafts={ch.id.startsWith('__virtual_') ? [] : (draftsByChannel[ch.id] || [])}
                 caseId={shipmentCase.id}
                 caseRef={shipmentCase.ref_number}
                 onAction={load}
+                onChannelCreated={ch.id.startsWith('__virtual_') ? () => setPendingOtherPanels(p => Math.max(0, p - 1)) : undefined}
+                style={{ flex: 1, minWidth: 0 }}
               />
-            ))}
-          </div>
-
-          {channels.length > 1 && (
-            <div className="wb-dots">
-              {channels.map((_, i) => (
-                <div
-                  key={i}
-                  className={`wb-dot${i === activeDot ? ' active' : ''}`}
-                  onClick={() => scrollToCol(i)}
-                />
-              ))}
+              {i < displayChannels.length - 1 && (
+                <div className="wb-resize-handle" onMouseDown={e => startResize(i, e)} />
+              )}
             </div>
-          )}
+          ))}
+
+          {/* Add third-party panel */}
+          <div
+            className="wb-add-panel-btn"
+            onClick={() => setPendingOtherPanels(p => p + 1)}
+            title="Add third-party thread"
+          >
+            <Plus size={12} />
+          </div>
         </div>
 
-        {/* Intel panel — collapsible */}
+        {/* Intel panel — resizable + foldable */}
         {intelOpen && (
-          <div style={{ width: 240, flexShrink: 0, borderLeft: '1px solid var(--es-n-100)', display: 'flex', flexDirection: 'column', background: 'var(--es-n-0)' }}>
-            <IntelPanel shipmentCase={shipmentCase} summary={summary} />
-          </div>
+          <>
+            {/* Drag-resize handle (hidden when folded to stripe) */}
+            {!intelFolded && (
+              <div className="wb-intel-resize-handle" onMouseDown={startIntelResize} />
+            )}
+
+            {intelFolded ? (
+              /* Stripe — click to expand */
+              <div className="wb-intel-stripe" onClick={toggleIntelFold} title="Expand intel panel">
+                <ChevronLeft size={11} />
+              </div>
+            ) : (
+              /* Full panel */
+              <div style={{ width: intelWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--es-n-0)', overflow: 'hidden' }}>
+                <div className="wb-intel-fold-bar">
+                  <button className="wb-intel-fold-btn" onClick={toggleIntelFold} title="Fold intel panel">
+                    <ChevronRight size={11} />
+                  </button>
+                </div>
+                <IntelPanel shipmentCase={shipmentCase} summary={summary} />
+              </div>
+            )}
+          </>
         )}
 
       </div>
