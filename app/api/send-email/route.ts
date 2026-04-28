@@ -21,13 +21,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
 
-  const { to, cc, bcc, subject, body, replyToNylasMessageId, case_id, channel_id, create_channel_label } = await req.json()
+  const { to, cc, bcc, subject, body, replyToNylasMessageId, case_id, channel_id, create_channel_label, create_channel_type } = await req.json()
 
   // If caller requests a new channel, create it before sending
   let resolvedChannelId: string | null = channel_id ?? null
-  if (case_id && !channel_id && create_channel_label && to) {
+  if (case_id && !channel_id && (create_channel_label || create_channel_type) && to) {
     const supabaseForChannel = createClient(supabaseUrl, supabaseKey)
-    // Find next position
     const { data: existing } = await supabaseForChannel
       .from('case_channels')
       .select('position')
@@ -35,20 +34,36 @@ export async function POST(req: NextRequest) {
       .order('position', { ascending: false })
       .limit(1)
     const nextPosition = ((existing?.[0]?.position ?? -1) as number) + 1
-    const { data: newChannel } = await supabaseForChannel
-      .from('case_channels')
-      .insert({
-        case_id,
-        channel_type: 'other',
-        party_email:  to,
-        label:        create_channel_label,
-        position:     nextPosition,
-        cc_emails:    cc ?? [],
-        message_count: 0,
-      })
-      .select('id')
-      .single()
-    resolvedChannelId = newChannel?.id ?? null
+    const type  = create_channel_type ?? 'other'
+    const label = create_channel_label ?? null
+
+    if (type === 'client' || type === 'vendor') {
+      // Upsert to avoid duplicates if a real channel already appeared via real-time
+      const { data: ch } = await supabaseForChannel
+        .from('case_channels')
+        .upsert(
+          { case_id, channel_type: type, party_email: to, label, position: nextPosition, cc_emails: cc ?? [], message_count: 0 },
+          { onConflict: 'case_id,channel_type' }
+        )
+        .select('id')
+        .single()
+      resolvedChannelId = ch?.id ?? null
+    } else {
+      const { data: newChannel } = await supabaseForChannel
+        .from('case_channels')
+        .insert({
+          case_id,
+          channel_type: 'other',
+          party_email:  to,
+          label,
+          position:     nextPosition,
+          cc_emails:    cc ?? [],
+          message_count: 0,
+        })
+        .select('id')
+        .single()
+      resolvedChannelId = newChannel?.id ?? null
+    }
   }
 
   const nylasBody: Record<string, unknown> = {

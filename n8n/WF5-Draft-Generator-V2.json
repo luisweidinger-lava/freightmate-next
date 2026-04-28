@@ -1,0 +1,363 @@
+{
+  "name": "WF5 — Draft Generator V2 (App Agent)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## SETUP REQUIRED BEFORE IMPORTING\n\n**Add to n8n Environment Variables:**\n\n`NEXIO_APP_URL` — Your Next.js app URL\n  Dev: `http://localhost:3000`\n  Prod: `https://your-app.vercel.app`\n\n`AXISLOG_WEBHOOK_SECRET` — Already set from WF6\n\n**Run this SQL migration on Supabase:**\n```sql\nALTER TABLE draft_tasks\n  ADD COLUMN IF NOT EXISTS error_message TEXT;\n```\n\n**What changed from V1:**\nThis workflow no longer calls OpenAI or builds prompts.\nIt delegates all AI work to the Next.js app endpoint\n`POST /api/agent/draft-reply`.\nn8n is now the orchestrator only — the app is the intelligence."
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-160, -240],
+      "id": "a0b0c0d0-e0f0-1020-3040-506070809000",
+      "name": "Sticky Note — Setup"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf5-draft",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "30e38abe-5ac0-4f7c-a35b-2e96d5e91100",
+      "name": "Webhook",
+      "webhookId": "0f3333fe-fc64-40d2-b56a-a79c4bc68b05",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cPCcpk9KKicFXvbB",
+          "name": "X-AxisLog-Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://ypfoknplxjdrhmguuurw.supabase.co/rest/v1/draft_tasks?status=eq.pending&order=priority.desc&limit=5&select=*",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlwZm9rbnBseGpkcmhtZ3V1dXJ3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDQ1Mzc3NywiZXhwIjoyMDkwMDI5Nzc3fQ.KVmqYjmvOON3DsHwAaySUVbWuzyQqjHJ5UdBtqdMCnU"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [208, 0],
+      "id": "dcda6d0f-3c14-4a92-899f-581c8879904e",
+      "name": "Get Pending Draft Tasks",
+      "credentials": {
+        "supabaseApi": {
+          "id": "K68Unh2duqjekPCQ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6513d385-eb3a-4a48-bf16-1f1065e17ee4",
+              "leftValue": {},
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [416, 0],
+      "id": "b928d33f-e446-496b-9249-1287af8d735c",
+      "name": "IF - Any Pending?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [672, 352],
+      "id": "0f8a138c-9c74-4d91-8652-1eb8c17ab910",
+      "name": "Nothing Pending — Stop"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [672, 0],
+      "id": "be3f0629-c6a2-4e04-b44e-82ed05195cdc",
+      "name": "Split In Batches"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the fields we need from the draft_tasks row.\n// This runs once per task in the batch loop.\nconst task = $input.first().json;\n\nreturn [{\n  json: {\n    task_id:      task.id,\n    case_id:      task.case_id,\n    channel_type: task.channel_type || 'client',\n    draft_type:   task.draft_type   || 'generic'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 112],
+      "id": "f1f2f3f4-a1a2-4a34-b1b2-c1c2c3c4c5c6",
+      "name": "Extract Task Fields"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ypfoknplxjdrhmguuurw.supabase.co/rest/v1/draft_tasks?id=eq.{{ $json.task_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlwZm9rbnBseGpkcmhtZ3V1dXJ3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDQ1Mzc3NywiZXhwIjoyMDkwMDI5Nzc3fQ.KVmqYjmvOON3DsHwAaySUVbWuzyQqjHJ5UdBtqdMCnU"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"status\": \"generating\" }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1088, 112],
+      "id": "7c6d64d4-ce0a-4a82-9061-857b97919c23",
+      "name": "Mark as Generating",
+      "credentials": {
+        "supabaseApi": {
+          "id": "K68Unh2duqjekPCQ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXIO_APP_URL }}/api/agent/draft-reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-AxisLog-Key",
+              "value": "={{ $env.AXISLOG_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"draft_task_id\": \"{{ $('Extract Task Fields').first().json.task_id }}\",\n  \"case_id\":       \"{{ $('Extract Task Fields').first().json.case_id }}\",\n  \"channel_type\":  \"{{ $('Extract Task Fields').first().json.channel_type }}\",\n  \"draft_type\":    \"{{ $('Extract Task Fields').first().json.draft_type }}\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1296, 112],
+      "id": "e1e2e3e4-b1b2-b3b4-c1c2-d1d2d3d4d5d6",
+      "name": "Call App Draft Agent",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst task     = $('Extract Task Fields').first().json;\n\n// The app returns { ok: true, draft_id: 'uuid' } on success\n// or { ok: false, error: 'message' } on failure.\n// If the HTTP call itself failed, response may be an error object.\nconst ok = response.ok === true;\nconst errorMsg = !ok\n  ? (response.error || ('Unexpected response: ' + JSON.stringify(response).slice(0, 200)))\n  : null;\n\nreturn [{\n  json: {\n    task_id:       task.task_id,\n    ok,\n    draft_id:      response.draft_id || null,\n    error_message: errorMsg\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1504, 112],
+      "id": "d1d2d3d4-c1c2-4c34-d1d2-e1e2e3e4e5e6",
+      "name": "Parse App Response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1712, 112],
+      "id": "c1c2c3c4-d1d2-4d34-e1e2-f1f2f3f4f5f6",
+      "name": "IF - Draft Created?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ypfoknplxjdrhmguuurw.supabase.co/rest/v1/draft_tasks?id=eq.{{ $json.task_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlwZm9rbnBseGpkcmhtZ3V1dXJ3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDQ1Mzc3NywiZXhwIjoyMDkwMDI5Nzc3fQ.KVmqYjmvOON3DsHwAaySUVbWuzyQqjHJ5UdBtqdMCnU"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"status\": \"ready\" }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1920, 0],
+      "id": "664809e7-3a51-48a7-abcf-7bdb2460c8bc",
+      "name": "PATCH draft_tasks → Ready",
+      "credentials": {
+        "supabaseApi": {
+          "id": "K68Unh2duqjekPCQ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ypfoknplxjdrhmguuurw.supabase.co/rest/v1/draft_tasks?id=eq.{{ $json.task_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlwZm9rbnBseGpkcmhtZ3V1dXJ3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDQ1Mzc3NywiZXhwIjoyMDkwMDI5Nzc3fQ.KVmqYjmvOON3DsHwAaySUVbWuzyQqjHJ5UdBtqdMCnU"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"failed\",\n  \"error_message\": {{ JSON.stringify($json.error_message || 'Agent call failed') }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1920, 224],
+      "id": "b1b2b3b4-e1e2-4e34-f1f2-a1a2a3a4a5a6",
+      "name": "PATCH draft_tasks → Failed",
+      "credentials": {
+        "supabaseApi": {
+          "id": "K68Unh2duqjekPCQ",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Get Pending Draft Tasks", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Pending Draft Tasks": {
+      "main": [
+        [{ "node": "IF - Any Pending?", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF - Any Pending?": {
+      "main": [
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }],
+        [{ "node": "Nothing Pending — Stop", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [],
+        [{ "node": "Extract Task Fields", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Task Fields": {
+      "main": [
+        [{ "node": "Mark as Generating", "type": "main", "index": 0 }]
+      ]
+    },
+    "Mark as Generating": {
+      "main": [
+        [{ "node": "Call App Draft Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call App Draft Agent": {
+      "main": [
+        [{ "node": "Parse App Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse App Response": {
+      "main": [
+        [{ "node": "IF - Draft Created?", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF - Draft Created?": {
+      "main": [
+        [{ "node": "PATCH draft_tasks → Ready", "type": "main", "index": 0 }],
+        [{ "node": "PATCH draft_tasks → Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "PATCH draft_tasks → Ready": {
+      "main": [
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }]
+      ]
+    },
+    "PATCH draft_tasks → Failed": {
+      "main": [
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "v2-2026-04-27",
+  "meta": {
+    "instanceId": "4123ea5e3cf70e54c111470b6d10899fdc571a30210f37010de420c75d98c7f4"
+  },
+  "id": "ZVGKMFwgDal3ho2V",
+  "tags": []
+}

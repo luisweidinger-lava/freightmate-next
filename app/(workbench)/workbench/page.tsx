@@ -9,7 +9,7 @@ export default function WorkbenchPage() {
       gap: 8,
       color: 'var(--es-n-300)',
     }}>
-      <span style={{ fontSize: 13 }}>Select a case to open the workbench</span>
+      <span style={{ fontSize: 13 }}>Open a case to work on in the Workbench.</span>
     </div>
   )
 }
