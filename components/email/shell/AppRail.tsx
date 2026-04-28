@@ -13,7 +13,6 @@ const ITEMS = [
   { href: '/crm',        icon: Users,           label: 'CRM' },
   { href: '/reports',    icon: BarChart2,       label: 'Reports' },
   { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/operations', icon: Handshake,       label: 'Operations' },
 ] as const
 
 const EMAIL_ROUTES = ['/inbox', '/sent', '/starred', '/drafts', '/spam', '/bin', '/archive']
@@ -23,11 +22,18 @@ export default function AppRail() {
   const router   = useRouter()
 
   const [user, setUser]     = useState<{ email?: string; user_metadata?: { full_name?: string; name?: string } } | null>(null)
+  const [role, setRole]     = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user)
+      if (data.user) {
+        supabase.from('profiles').select('role').eq('id', data.user.id).single()
+          .then(({ data: p }) => setRole(p?.role ?? 'operator'))
+      }
+    })
   }, [])
 
   // Close menu on outside click
@@ -70,6 +76,13 @@ export default function AppRail() {
           <span className="rail-tooltip">{label}</span>
         </Link>
       ))}
+
+      {role === 'manager' && (
+        <Link href="/operations" aria-label="Operations" className={isActive('/operations') ? 'active' : ''} style={{ position: 'relative' }}>
+          <Handshake size={16} strokeWidth={1.5} />
+          <span className="rail-tooltip">Operations</span>
+        </Link>
+      )}
 
       <div className="spacer" />
 

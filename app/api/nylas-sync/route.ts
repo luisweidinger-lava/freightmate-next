@@ -1,26 +1,43 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 
 // ── Manual inbox sync ──────────────────────────────────────────────────────────
 // Fetches recent messages from Nylas and upserts them into email_messages.
 // Used for manual "Sync from Gmail" until n8n WF1 is active.
 // Also works as a credential test — 401 here means the API key is invalid.
 
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   const apiKey    = process.env.NYLAS_API_KEY
-  const grantId   = process.env.NYLAS_GRANT_ID
   const nylasBase = process.env.NYLAS_API_BASE ?? 'https://api.us.nylas.com'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!apiKey || !grantId) {
-    return Response.json({ error: 'NYLAS_API_KEY or NYLAS_GRANT_ID not configured' }, { status: 500 })
+  if (!apiKey) {
+    return Response.json({ error: 'NYLAS_API_KEY not configured' }, { status: 500 })
   }
   if (!supabaseUrl || !supabaseKey) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey)
+
+  // Resolve calling user's Nylas grant
+  const supabaseAuth = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+  )
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return Response.json({ error: 'Unauthenticated' }, { status: 401 })
+
+  const { data: appUser } = await supabase
+    .from('app_users').select('mailbox_id').eq('id', user.id).single()
+  const { data: mailbox } = await supabase
+    .from('mailboxes').select('nylas_grant_id').eq('id', appUser!.mailbox_id).single()
+  const grantId  = mailbox?.nylas_grant_id
+  const mailboxId = appUser!.mailbox_id
+  if (!grantId) return Response.json({ error: 'No Nylas grant for this user' }, { status: 500 })
 
   // ── 1. Delete synthetic mail artifacts first ──────────────────────────────
   const syntheticIdPrefixes = ['local_', 'draft_']
@@ -30,6 +47,7 @@ export async function POST(_req: NextRequest) {
     const { error: deleteError, count } = await supabase
       .from('email_messages')
       .delete({ count: 'exact' })
+      .eq('mailbox_id', mailboxId)
       .like('nylas_message_id', `${prefix}%`)
 
     if (deleteError) {
@@ -97,6 +115,7 @@ export async function POST(_req: NextRequest) {
       // is_processed is intentionally omitted — set only during triage, not overwritten on sync
       created_at:       msg.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString(),
       visibility:       'internal',
+      mailbox_id:       mailboxId,
     }
   })
 
@@ -119,6 +138,7 @@ export async function POST(_req: NextRequest) {
   const { data: existingRows, error: existingError } = await supabase
     .from('email_messages')
     .select('id, folder, nylas_message_id, case_id')
+    .eq('mailbox_id', mailboxId)
     .not('nylas_message_id', 'like', 'local_%')
     .not('nylas_message_id', 'like', 'draft_%')
 

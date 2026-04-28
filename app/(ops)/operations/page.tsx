@@ -10,7 +10,7 @@ import type { Task } from 'gantt-task-react'
 import 'gantt-task-react/dist/index.css'
 import { supabase } from '@/lib/supabase'
 import { formatRelTime, formatDateShort } from '@/lib/utils'
-import type { ShipmentCase, Profile, Organisation, EmailMessage, DraftTask, OfficeHours, Vendor } from '@/lib/types'
+import type { ShipmentCase, Profile, Vendor } from '@/lib/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -39,14 +39,26 @@ const STATUS_VARIANT: Record<string, string> = {
 
 const OPERATOR_COLORS = ['#5B7BF8','#E07B39','#34B76F','#8B5CF6','#E84040','#0891B2','#D97706','#059669']
 
-const DEFAULT_OFFICE_HOURS: OfficeHours = {
-  tz:   'Europe/Berlin',
-  days: [9,18, 9,18, 9,18, 9,18, 9,18, null, null],
-}
-
 // ── Slim email type (only columns we select) ──────────────────────────────────
 
-type SlimEmail = Pick<EmailMessage, 'id' | 'case_id' | 'direction' | 'created_at' | 'message_type'>
+interface SlimEmail {
+  id: string
+  case_id: string | null
+  direction: 'inbound' | 'outbound'
+  created_at: string
+  message_type: string | null
+}
+
+// ── Team KPI row returned by get_team_kpis() RPC ──────────────────────────────
+
+interface TeamKpi {
+  operator_id:   string
+  operator_email: string
+  display_name:  string | null
+  active_cases:  number
+  critical_cases: number
+  last_seen_at:  string | null
+}
 
 // ── Case predicates ───────────────────────────────────────────────────────────
 
@@ -64,151 +76,6 @@ function CardTip({ title, tip }: { title: string; tip: string }) {
       <span className="card-tooltip">{tip}</span>
     </span>
   )
-}
-
-// ── Business-hours response time ──────────────────────────────────────────────
-
-function tzHourFraction(d: Date, tz: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
-  }).formatToParts(d)
-  const h = parseInt(parts.find(p => p.type === 'hour')?.value   ?? '0')
-  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
-  return h + m / 60
-}
-
-function tzDateStr(d: Date, tz: string): string {
-  return d.toLocaleDateString('en-CA', { timeZone: tz }) // "YYYY-MM-DD"
-}
-
-function tzDow(d: Date, tz: string): number {
-  const name = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(d)
-  return ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].indexOf(name)
-}
-
-function businessMinutesBetween(start: Date, end: Date, oh: OfficeHours): number {
-  if (end <= start) return 0
-  const dayPairs = Array.from({ length: 7 }, (_, i) => {
-    const o = oh.days[i * 2], c = oh.days[i * 2 + 1]
-    return (o != null && c != null) ? [o, c] as [number, number] : null
-  })
-  const startStr = tzDateStr(start, oh.tz)
-  const endStr   = tzDateStr(end,   oh.tz)
-  const startHour = tzHourFraction(start, oh.tz)
-  const endHour   = tzHourFraction(end,   oh.tz)
-
-  let minutes = 0
-  const cursor  = new Date(start)
-  const seen    = new Set<string>()
-
-  while (seen.size <= 90) {
-    const dayStr = tzDateStr(cursor, oh.tz)
-    if (!seen.has(dayStr)) {
-      seen.add(dayStr)
-      const pair = dayPairs[tzDow(cursor, oh.tz)]
-      if (pair) {
-        let lo = pair[0], hi = pair[1]
-        if (dayStr === startStr) lo = Math.max(lo, startHour)
-        if (dayStr === endStr)   hi = Math.min(hi, endHour)
-        if (hi > lo) minutes += (hi - lo) * 60
-      }
-    }
-    if (dayStr === endStr) break
-    cursor.setTime(cursor.getTime() + 24 * 3_600_000)
-  }
-  return minutes
-}
-
-// Median business-minutes response time across all inbound→outbound pairs for a set of cases
-function medianResponseMinutes(
-  emails: SlimEmail[],
-  caseIds: Set<string>,
-  oh: OfficeHours,
-): number | null {
-  const byCaseId: Record<string, SlimEmail[]> = {}
-  for (const e of emails) {
-    if (!e.case_id || !caseIds.has(e.case_id)) continue
-    ;(byCaseId[e.case_id] ??= []).push(e)
-  }
-  const times: number[] = []
-  for (const msgs of Object.values(byCaseId)) {
-    const sorted = [...msgs].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
-    for (let i = 0; i < sorted.length - 1; i++) {
-      if (sorted[i].direction === 'inbound' && sorted[i + 1].direction === 'outbound') {
-        const mins = businessMinutesBetween(
-          new Date(sorted[i].created_at),
-          new Date(sorted[i + 1].created_at),
-          oh,
-        )
-        if (mins > 0) times.push(mins)
-      }
-    }
-  }
-  if (!times.length) return null
-  const s = [...times].sort((a, b) => a - b)
-  return s[Math.floor(s.length / 2)]
-}
-
-function fmtMins(mins: number | null): string {
-  if (mins == null) return '—'
-  if (mins < 60) return `${Math.round(mins)}m`
-  return `${(mins / 60).toFixed(1)}h`
-}
-
-// ── Per-operator stats ────────────────────────────────────────────────────────
-
-interface OperatorStats {
-  profile:          Profile
-  activeCases:      number
-  onTimeRate:       number | null
-  avgResponseMins:  number | null
-  openDrafts:       number
-  unansweredEmails: number
-  escalations:      number
-  emailTraffic:     number
-}
-
-function computeStats(
-  profile: Profile,
-  allCases: ShipmentCase[],
-  emails: SlimEmail[],
-  drafts: DraftTask[],
-  oh: OfficeHours,
-): OperatorStats {
-  const cases   = allCases.filter(c => c.operator_id === profile.id)
-  const active  = cases.filter(isActive)
-  const caseIds = new Set(cases.map(c => c.id))
-
-  const onTimeRate = active.length
-    ? Math.round(active.filter(c => !isDelayed(c)).length / active.length * 100)
-    : null
-
-  const avgResponseMins = medianResponseMinutes(emails, caseIds, oh)
-
-  const openDrafts = drafts.filter(
-    d => caseIds.has(d.case_id) && ['pending','generating','ready'].includes(d.status),
-  ).length
-
-  // Unanswered: last message on the case is inbound and arrived > 4h ago
-  const byCaseId: Record<string, SlimEmail[]> = {}
-  for (const e of emails) {
-    if (!e.case_id || !caseIds.has(e.case_id)) continue
-    ;(byCaseId[e.case_id] ??= []).push(e)
-  }
-  const now = Date.now()
-  let unansweredEmails = 0
-  for (const msgs of Object.values(byCaseId)) {
-    const sorted = [...msgs].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
-    const last = sorted[sorted.length - 1]
-    if (last.direction === 'inbound' && now - +new Date(last.created_at) > 4 * 3_600_000) {
-      unansweredEmails++
-    }
-  }
-
-  const escalations  = active.filter(c => c.priority === 'urgent' || c.tags?.includes('escalation')).length
-  const emailTraffic = emails.filter(e => e.case_id && caseIds.has(e.case_id)).length
-
-  return { profile, activeCases: active.length, onTimeRate, avgResponseMins, openDrafts, unansweredEmails, escalations, emailTraffic }
 }
 
 // ── useCountUp ────────────────────────────────────────────────────────────────
@@ -232,16 +99,11 @@ function useCountUp(target: number, duration = 600) {
 
 // ── KPI Bar ───────────────────────────────────────────────────────────────────
 
-function KpiBar({ cases, profiles }: {
-  cases:    ShipmentCase[]
-  profiles: Profile[]
-}) {
-  const active       = cases.filter(isActive)
-  const revenue      = cases.reduce((s, c) => s + (c.rate_amount ?? 0), 0)
-  const currency     = cases.find(c => c.rate_currency)?.rate_currency ?? 'EUR'
-  const operatorCount = profiles.filter(p => p.role === 'operator').length
+function KpiBar({ teamKpis }: { teamKpis: TeamKpi[] }) {
+  const totalActive   = teamKpis.reduce((s, k) => s + k.active_cases, 0)
+  const totalCritical = teamKpis.reduce((s, k) => s + k.critical_cases, 0)
 
-  const animActive = useCountUp(active.length)
+  const animActive = useCountUp(totalActive)
 
   return (
     <>
@@ -251,15 +113,15 @@ function KpiBar({ cases, profiles }: {
         <div className="kpi-card__label">Active Cases</div>
       </div>
       <div className="kpi-card" style={{ cursor: 'default' }}>
-        <div className="kpi-card__top"><TrendingUp size={16} strokeWidth={1.5} className="kpi-card__icon" /></div>
-        <div className="kpi-card__count" style={{ fontSize: 20 }}>
-          {currency} {revenue.toLocaleString('de-DE', { maximumFractionDigits: 0 })}
+        <div className="kpi-card__top"><AlertTriangle size={16} strokeWidth={1.5} className="kpi-card__icon" /></div>
+        <div className="kpi-card__count" style={{ fontSize: 24, color: totalCritical > 0 ? 'var(--es-urgent)' : undefined }}>
+          {totalCritical}
         </div>
-        <div className="kpi-card__label">Pipeline Revenue</div>
+        <div className="kpi-card__label">Critical Cases</div>
       </div>
       <div className="kpi-card" style={{ cursor: 'default' }}>
         <div className="kpi-card__top"><Users size={16} strokeWidth={1.5} className="kpi-card__icon" /></div>
-        <div className="kpi-card__count" style={{ fontSize: 24 }}>{operatorCount}</div>
+        <div className="kpi-card__count" style={{ fontSize: 24 }}>{teamKpis.length}</div>
         <div className="kpi-card__label">Operators</div>
       </div>
     </>
@@ -268,30 +130,31 @@ function KpiBar({ cases, profiles }: {
 
 // ── Operator Performance Table ────────────────────────────────────────────────
 
-function OperatorTable({ stats, loading }: { stats: OperatorStats[]; loading: boolean }) {
+function OperatorTable({ kpis, loading }: { kpis: TeamKpi[]; loading: boolean }) {
+  const now = Date.now()
   return (
     <div className="es-card">
       <div className="es-card__header">
         <Users size={13} strokeWidth={1.5} />
-        <CardTip title="Operators" tip="Response time, case load and email activity per operator" />
-        <span className="es-card__subtitle">{stats.length} operator{stats.length !== 1 ? 's' : ''}</span>
+        <CardTip title="Operators" tip="Live case load and online status per operator" />
+        <span className="es-card__subtitle">{kpis.length} operator{kpis.length !== 1 ? 's' : ''}</span>
       </div>
       <div style={{ overflowX: 'auto' }}>
       <table className="es-table" style={{ tableLayout: 'fixed', width: '100%' }}>
         <colgroup>
-          <col style={{ width: '20%' }} />
-          <col style={{ width: '20%' }} />
-          <col style={{ width: '20%' }} />
-          <col style={{ width: '20%' }} />
-          <col style={{ width: '20%' }} />
+          <col style={{ width: '25%' }} />
+          <col style={{ width: '30%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '15%' }} />
         </colgroup>
         <thead>
           <tr>
             <th className="th-nosort">Name</th>
             <th className="th-nosort">Email</th>
-            <th className="th-nosort" style={{ textAlign: 'right' }}>Active Cases</th>
-            <th className="th-nosort" style={{ textAlign: 'right' }}>Email Traffic</th>
-            <th className="th-nosort" style={{ textAlign: 'right' }}>Median Response</th>
+            <th className="th-nosort" style={{ textAlign: 'right' }}>Active</th>
+            <th className="th-nosort" style={{ textAlign: 'right' }}>Critical</th>
+            <th className="th-nosort" style={{ textAlign: 'center' }}>Online</th>
           </tr>
         </thead>
         <tbody>
@@ -301,28 +164,40 @@ function OperatorTable({ stats, loading }: { stats: OperatorStats[]; loading: bo
                   <td key={j} style={{ padding: '9px 12px' }}><div className="es-skeleton" style={{ height: 11, width: w }} /></td>
                 ))}</tr>
               ))
-            : stats.length === 0
+            : kpis.length === 0
               ? <tr><td colSpan={5}><div className="empty-state">No operators found</div></td></tr>
-              : stats.map(s => (
-                  <tr key={s.profile.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{
-                          width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-                          background: 'var(--es-brand-light)', color: 'var(--es-brand-text)',
-                          display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
-                        }}>
-                          {(s.profile.display_name ?? s.profile.email)[0].toUpperCase()}
+              : kpis.map(k => {
+                  const online = !!k.last_seen_at && now - new Date(k.last_seen_at).getTime() < 5 * 60 * 1000
+                  return (
+                    <tr key={k.operator_id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{
+                            width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                            background: 'var(--es-brand-light)', color: 'var(--es-brand-text)',
+                            display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
+                          }}>
+                            {(k.display_name ?? k.operator_email)[0].toUpperCase()}
+                          </div>
+                          <div className="cell-client">{k.display_name ?? '—'}</div>
                         </div>
-                        <div className="cell-client">{s.profile.display_name ?? '—'}</div>
-                      </div>
-                    </td>
-                    <td><div className="cell-email">{s.profile.email}</div></td>
-                    <td style={{ textAlign: 'right' }}><span className="cell-ref">{s.activeCases}</span></td>
-                    <td style={{ textAlign: 'right' }}><span className="cell-ref">{s.emailTraffic}</span></td>
-                    <td style={{ textAlign: 'right' }}><span className="cell-time">{fmtMins(s.avgResponseMins)}</span></td>
-                  </tr>
-                ))
+                      </td>
+                      <td><div className="cell-email">{k.operator_email}</div></td>
+                      <td style={{ textAlign: 'right' }}><span className="cell-ref">{k.active_cases}</span></td>
+                      <td style={{ textAlign: 'right' }}>
+                        {k.critical_cases > 0
+                          ? <span className="es-badge es-badge--red">{k.critical_cases}</span>
+                          : <span className="cell-ref" style={{ color: 'var(--es-n-300)' }}>0</span>}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{
+                          display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                          background: online ? '#22C55E' : 'var(--es-n-200)',
+                        }} title={online ? 'Online' : 'Offline'} />
+                      </td>
+                    </tr>
+                  )
+                })
           }
         </tbody>
       </table>
@@ -1076,81 +951,56 @@ function GanttCard({ cases, profiles, loading }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function OperationsPage() {
-  const [cases,    setCases]    = useState<ShipmentCase[]>([])
+  const [teamKpis, setTeamKpis] = useState<TeamKpi[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [emails,   setEmails]   = useState<SlimEmail[]>([])
-  const [drafts,   setDrafts]   = useState<DraftTask[]>([])
-  const [org,      setOrg]      = useState<Organisation | null>(null)
   const [vendors,  setVendors]  = useState<Vendor[]>([])
   const [loading,  setLoading]  = useState(true)
-  const selected = 'all' as const
 
   useEffect(() => {
     let alive = true
     async function load() {
       const [
-        { data: casesData },
+        { data: teamKpisData },
         { data: profilesData },
-        { data: emailsData },
-        { data: draftsData },
-        { data: orgData },
         { data: vendorsData },
       ] = await Promise.all([
-        supabase.from('shipment_cases').select('*').order('updated_at', { ascending: false }),
+        supabase.rpc('get_team_kpis'),
         supabase.from('profiles').select('*'),
-        supabase.from('email_messages')
-          .select('id,case_id,direction,created_at,message_type')
-          .order('created_at', { ascending: true }),
-        supabase.from('draft_tasks').select('*').in('status', ['pending','generating','ready']),
-        supabase.from('organisations').select('*').limit(1).maybeSingle(),
         supabase.from('vendors').select('*'),
       ])
       if (!alive) return
-      setCases(casesData ?? [])
+      setTeamKpis((teamKpisData as TeamKpi[]) ?? [])
       setProfiles(profilesData ?? [])
-      setEmails(emailsData as SlimEmail[] ?? [])
-      setDrafts(draftsData ?? [])
-      setOrg(orgData ?? null)
       setVendors(vendorsData ?? [])
       setLoading(false)
+
+      // Heartbeat — stamp presence so the online indicator reflects active managers
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        supabase.from('profiles')
+          .update({ last_seen_at: new Date().toISOString() })
+          .eq('id', user.id)
+          .then(() => {})
+      }
     }
     load()
     return () => { alive = false }
   }, [])
 
-  const oh = org?.office_hours ?? DEFAULT_OFFICE_HOURS
-
-  const filteredCases = useMemo(
-    () => selected === 'all' ? cases : cases.filter(c => c.operator_id === selected),
-    [cases, selected],
-  )
-
-  const operators = profiles.filter(p => p.role === 'operator')
-
-  const operatorStats = useMemo(
-    () => operators.map(p => computeStats(p, cases, emails, drafts, oh)),
-    [operators, cases, emails, drafts, oh],
-  )
-
-  const filteredStats = useMemo(
-    () => selected === 'all' ? operatorStats : operatorStats.filter(s => s.profile.id === selected),
-    [operatorStats, selected],
-  )
-
   return (
     <main className="dashboard-main">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 10, alignItems: 'stretch' }}>
-        <KpiBar cases={filteredCases} profiles={profiles} />
-        <PipelineFunnel cases={filteredCases} compact />
+        <KpiBar teamKpis={teamKpis} />
+        <PipelineFunnel cases={[]} compact />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'stretch' }}>
-        <AlertsPanel cases={filteredCases} emails={emails} loading={loading} />
-        <OperatorTable stats={filteredStats} loading={loading} />
+        <AlertsPanel cases={[]} emails={[]} loading={loading} />
+        <OperatorTable kpis={teamKpis} loading={loading} />
       </div>
-      <GanttCard cases={filteredCases} profiles={profiles} loading={loading} />
-      <KanbanBoard cases={filteredCases} profiles={profiles} loading={loading} />
-      <CasesTable cases={filteredCases} vendors={vendors} profiles={profiles} loading={loading} />
-      <VolumeTrend allCases={cases} profiles={profiles} selected={selected} />
+      <GanttCard cases={[]} profiles={profiles} loading={loading} />
+      <KanbanBoard cases={[]} profiles={profiles} loading={loading} />
+      <CasesTable cases={[]} vendors={vendors} profiles={profiles} loading={loading} />
+      <VolumeTrend allCases={[]} profiles={profiles} selected="all" />
     </main>
   )
 }
