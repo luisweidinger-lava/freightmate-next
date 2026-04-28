@@ -1,15 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-<<<<<<< HEAD
-import { usePathname } from 'next/navigation'
-import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, Handshake } from 'lucide-react'
-=======
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, LogOut } from 'lucide-react'
+import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, Handshake, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
->>>>>>> 239a6f325a31326ffe742a7ab6c01f01bea9f74b
 
 const ITEMS = [
   { href: '/inbox',      icon: Mail,            label: 'Mail' },
@@ -70,8 +65,9 @@ export default function AppRail() {
   return (
     <div className="es-app-rail" style={{ position: 'relative' }}>
       {ITEMS.map(({ href, icon: Icon, label }) => (
-        <Link key={href} href={href} aria-label={label} className={isActive(href) ? 'active' : ''}>
+        <Link key={href} href={href} aria-label={label} className={isActive(href) ? 'active' : ''} style={{ position: 'relative' }}>
           <Icon size={16} strokeWidth={1.5} />
+          <span className="rail-tooltip">{label}</span>
         </Link>
       ))}
 
