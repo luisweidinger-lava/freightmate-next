@@ -452,17 +452,31 @@ function priorityBadge(p: string) {
 
 export default function DashboardPage() {
   const router  = useRouter()
+  const [userProfile, setUserProfile] = useState<{ id: string; role: string } | null | undefined>(undefined)
   const [cases,   setCases]   = useState<ShipmentCase[]>([])
   const [emails,  setEmails]  = useState<EmailMessage[]>([])
   const [drafts,        setDrafts]        = useState<DraftWithCase[]>([])
   const [loading,       setLoading]       = useState(true)
   const [crmReviewCount, setCrmReviewCount] = useState(0)
 
+  // Resolve current user role; redirect managers to their own dashboard
   useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data: profile } = await supabase.from('profiles').select('id, role').eq('id', user.id).single()
+      if (profile?.role === 'manager') { router.replace('/operations'); return }
+      setUserProfile({ id: user.id, role: profile?.role ?? 'operator' })
+    })
+  }, [router])
+
+  useEffect(() => {
+    if (userProfile === undefined) return
     let mounted = true
+    const opFilter = (q: any) => userProfile ? q.eq('operator_id', userProfile.id) : q
+
     async function load() {
       const [{ data: casesData }, { data: emailsData }, { data: draftsData }, { count: crmCount }] = await Promise.all([
-        supabase.from('shipment_cases').select('*').order('updated_at', { ascending: false }),
+        opFilter(supabase.from('shipment_cases').select('*')).order('updated_at', { ascending: false }),
         supabase.from('email_messages').select('*').is('case_id', null).eq('folder', 'inbox').eq('direction', 'inbound').order('created_at', { ascending: false }),
         supabase.from('draft_tasks').select('*, shipment_cases(ref_number, client_name)').eq('status', 'ready').order('created_at', { ascending: false }),
         supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('needs_review', true),
@@ -480,8 +494,8 @@ export default function DashboardPage() {
     const channel = supabase
       .channel('dashboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_cases' }, () => {
-        supabase.from('shipment_cases').select('*').order('updated_at', { ascending: false })
-          .then(({ data }) => { if (mounted && data) setCases(data) })
+        opFilter(supabase.from('shipment_cases').select('*')).order('updated_at', { ascending: false })
+          .then(({ data }: { data: ShipmentCase[] | null }) => { if (mounted && data) setCases(data) })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'draft_tasks' }, () => {
         supabase.from('draft_tasks').select('*, shipment_cases(ref_number, client_name)').eq('status', 'ready').order('created_at', { ascending: false })
@@ -490,7 +504,7 @@ export default function DashboardPage() {
       .subscribe()
 
     return () => { mounted = false; supabase.removeChannel(channel) }
-  }, [])
+  }, [userProfile])
 
   const activeCases  = cases.filter(c => !CLOSED.includes(c.status as typeof CLOSED[number]))
   const delayedCount  = activeCases.filter(isDelayed).length
