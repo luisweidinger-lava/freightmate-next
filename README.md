@@ -99,3 +99,8 @@ Nexio connects to the logistics company's existing email infrastructure and laye
 ## 👥 Team
  
 Luis Weidinger, Emanuele Scammacca
+
+---
+
+© 2026 Luis Weidinger & Emanuele Scammacca del Murgo. All rights reserved.  
+See [LICENSE](./LICENSE) for terms.

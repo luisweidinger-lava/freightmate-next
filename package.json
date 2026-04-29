@@ -2,6 +2,8 @@
   "name": "axislog-next",
   "version": "0.1.0",
   "private": true,
+  "author": "Luis Weidinger & Emanuele Scammacca del Murgo",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
