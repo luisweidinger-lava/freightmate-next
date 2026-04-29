@@ -434,11 +434,21 @@ function CasesTable({ cases, sort, setSort, loading }: {
 
 function CasesPageInner() {
   const params = useSearchParams()
+  const [userProfile, setUserProfile] = useState<{ id: string; role: string } | null | undefined>(undefined)
   const [allCases, setAllCases] = useState<ShipmentCase[]>([])
   const [loading,  setLoading]  = useState(true)
   const [search,   setSearch]   = useState('')
   const [filters,  setFilters]  = useState<Filters>({ status: [], urgency: [], flags: [], period: null })
   const [sort,     setSort]     = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'flight_date', dir: 'asc' })
+
+  // Resolve current user role
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) { setUserProfile(null); return }
+      const { data: profile } = await supabase.from('profiles').select('id, role').eq('id', user.id).single()
+      setUserProfile({ id: user.id, role: profile?.role ?? 'operator' })
+    })
+  }, [])
 
   // Apply URL params from dashboard navigation on mount
   useEffect(() => {
@@ -460,16 +470,20 @@ function CasesPageInner() {
   }, [qParam])
 
   useEffect(() => {
+    if (userProfile === undefined) return
     let mounted = true
-    supabase.from('shipment_cases').select('*').order('updated_at', { ascending: false })
-      .then(({ data }) => { if (mounted) { setAllCases(data ?? []); setLoading(false) } })
+    const opFilter = (q: any) => (userProfile && userProfile.role !== 'manager') ? q.eq('operator_id', userProfile.id) : q
+    opFilter(supabase.from('shipment_cases').select('*')).order('updated_at', { ascending: false })
+      .then(({ data }: { data: ShipmentCase[] | null }) => { if (mounted) { setAllCases(data ?? []); setLoading(false) } })
     return () => { mounted = false }
-  }, [])
+  }, [userProfile])
 
   const refreshCases = useCallback(async () => {
-    const { data } = await supabase.from('shipment_cases').select('*').order('updated_at', { ascending: false })
+    if (userProfile === undefined) return
+    const opFilter = (q: any) => (userProfile && userProfile.role !== 'manager') ? q.eq('operator_id', userProfile.id) : q
+    const { data } = await opFilter(supabase.from('shipment_cases').select('*')).order('updated_at', { ascending: false })
     if (data) setAllCases(data)
-  }, [])
+  }, [userProfile])
 
   useEffect(() => {
     const ch = supabase.channel('cases-realtime')
