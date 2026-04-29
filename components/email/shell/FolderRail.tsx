@@ -133,6 +133,7 @@ function Group({ label, open, onToggle, children }: {
 // ── FolderRail ───────────────────────────────────────────────────────────────
 
 function FolderRailInner() {
+  const [mailboxId, setMailboxId] = useState<string | null | undefined>(undefined)
   const [counts,   setCounts]   = useState<Counts>({ inbox: 0, drafts: 0, urgent: 0, unmatched: 0, fromClients: 0, fromVendors: 0 })
   const [favOpen,  setFavOpen]  = useState(true)
   const [acctOpen, setAcctOpen] = useState(true)
@@ -141,6 +142,14 @@ function FolderRailInner() {
   const [favs,     setFavs]     = useState<string[]>([])
   const [ctx,      setCtx]      = useState<CtxMenu | null>(null)
   const ctxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setMailboxId(null); return }
+      supabase.from('app_users').select('mailbox_id').eq('id', user.id).single()
+        .then(({ data }) => setMailboxId(data?.mailbox_id ?? null))
+    })
+  }, [])
 
   // Load favourites from localStorage on mount
   useEffect(() => { setFavs(loadFavs()) }, [])
@@ -157,29 +166,31 @@ function FolderRailInner() {
 
   // Supabase realtime counts
   const fetchCounts = useCallback(async () => {
+    if (mailboxId === undefined) return
+    const mbFilter = (q: any) => mailboxId ? q.eq('mailbox_id', mailboxId) : q
     const [unreadRes, draftsRes, unmatchedRes, clientRes, vendorRes] = await Promise.all([
       // Unread inbox
-      supabase.from('email_messages')
+      mbFilter(supabase.from('email_messages')
         .select('*', { count: 'exact', head: true })
-        .eq('is_read', false).eq('folder', 'inbox'),
+        .eq('is_read', false).eq('folder', 'inbox')),
       // Pending drafts
       supabase.from('message_drafts')
         .select('*', { count: 'exact', head: true })
         .is('approved_at', null).is('rejected_at', null).is('sent_at', null),
       // Unmatched: inbox emails with no case linked
-      supabase.from('email_messages')
+      mbFilter(supabase.from('email_messages')
         .select('*', { count: 'exact', head: true })
-        .eq('folder', 'inbox').is('case_id', null),
+        .eq('folder', 'inbox').is('case_id', null)),
       // From clients: inbox emails linked to a client channel (inner join required)
-      (supabase.from('email_messages') as any)
+      mbFilter((supabase.from('email_messages') as any)
         .select('case_channels!channel_id!inner(channel_type)', { count: 'exact', head: true })
         .eq('folder', 'inbox')
-        .eq('case_channels.channel_type', 'client'),
+        .eq('case_channels.channel_type', 'client')),
       // From vendors: inbox emails linked to a vendor channel (inner join required)
-      (supabase.from('email_messages') as any)
+      mbFilter((supabase.from('email_messages') as any)
         .select('case_channels!channel_id!inner(channel_type)', { count: 'exact', head: true })
         .eq('folder', 'inbox')
-        .eq('case_channels.channel_type', 'vendor'),
+        .eq('case_channels.channel_type', 'vendor')),
     ])
     setCounts({
       inbox:       unreadRes.count    ?? 0,
@@ -189,7 +200,7 @@ function FolderRailInner() {
       fromClients: clientRes.count    ?? 0,
       fromVendors: vendorRes.count    ?? 0,
     })
-  }, [])
+  }, [mailboxId])
 
   useEffect(() => {
     fetchCounts()

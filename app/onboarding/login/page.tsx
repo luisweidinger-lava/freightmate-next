@@ -16,10 +16,13 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: { user }, error: authError } = await supabase.auth.signInWithPassword({ email, password })
       if (authError) { setError(authError.message); return }
+      const { data: profile } = user
+        ? await supabase.from('profiles').select('role').eq('id', user.id).single()
+        : { data: null }
       router.refresh()
-      router.replace('/')
+      router.replace(profile?.role === 'manager' ? '/operations' : '/dashboard')
     } finally {
       setLoading(false)
     }

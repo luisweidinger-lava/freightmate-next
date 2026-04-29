@@ -30,6 +30,7 @@ function InboxContent() {
   const filterParam = searchParams.get('filter')
   const idParam = searchParams.get('id')
 
+  const [mailboxId, setMailboxId] = useState<string | null | undefined>(undefined)
   const [emails, setEmails] = useState<EmailMessage[]>([])
   const [selected, setSelected] = useState<EmailMessage | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -48,6 +49,14 @@ function InboxContent() {
     try { return Number(localStorage.getItem(LIST_WIDTH_KEY)) || 360 } catch { return 360 }
   })
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setMailboxId(null); return }
+      supabase.from('app_users').select('mailbox_id').eq('id', user.id).single()
+        .then(({ data }) => setMailboxId(data?.mailbox_id ?? null))
+    })
+  }, [])
+
   // Keep ref in sync so load() can check selection without it as a dep
   useEffect(() => { selectedIdRef.current = selected?.id ?? null }, [selected])
 
@@ -61,6 +70,7 @@ function InboxContent() {
   }, [filterParam])
 
   const load = useCallback(async () => {
+    if (mailboxId === undefined) return
     setLoading(true)
 
     // For client/vendor smart views: INNER JOIN so only emails already linked to a
@@ -74,6 +84,7 @@ function InboxContent() {
       .eq('folder', 'inbox')
       .order('created_at', { ascending: false })
 
+    if (mailboxId)              query = query.eq('mailbox_id', mailboxId)
     if (filter === 'unread')    query = query.eq('is_read', false)
     if (filter === 'unmatched') query = query.is('case_id', null)
     if (filter === 'client')    query = (query as any).eq('case_channels.channel_type', 'client')
@@ -93,7 +104,7 @@ function InboxContent() {
       if (found) setSelected(found)
     }
     setLoading(false)
-  }, [filter, idParam])
+  }, [filter, idParam, mailboxId])
 
   useEffect(() => { load() }, [load])
 
