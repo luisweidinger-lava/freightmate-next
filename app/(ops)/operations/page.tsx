@@ -60,6 +60,13 @@ interface TeamKpi {
   last_seen_at:  string | null
 }
 
+interface OrgOperator {
+  id:           string
+  email:        string
+  display_name: string | null
+  in_team:      boolean
+}
+
 // ── Case predicates ───────────────────────────────────────────────────────────
 
 const today0 = () => { const d = new Date(); d.setHours(0,0,0,0); return d }
@@ -130,7 +137,14 @@ function KpiBar({ teamKpis }: { teamKpis: TeamKpi[] }) {
 
 // ── Operator Performance Table ────────────────────────────────────────────────
 
-function OperatorTable({ kpis, loading }: { kpis: TeamKpi[]; loading: boolean }) {
+function OperatorTable({ kpis, loading, orgOperators, onAdd, onRemove }: {
+  kpis: TeamKpi[]
+  loading: boolean
+  orgOperators: OrgOperator[]
+  onAdd:    (id: string) => Promise<void>
+  onRemove: (id: string) => Promise<void>
+}) {
+  const [managing, setManaging] = useState(false)
   const now = Date.now()
   return (
     <div className="es-card">
@@ -138,7 +152,46 @@ function OperatorTable({ kpis, loading }: { kpis: TeamKpi[]; loading: boolean })
         <Users size={13} strokeWidth={1.5} />
         <CardTip title="Operators" tip="Live case load and online status per operator" />
         <span className="es-card__subtitle">{kpis.length} operator{kpis.length !== 1 ? 's' : ''}</span>
+        <button
+          onClick={() => setManaging(m => !m)}
+          style={{
+            marginLeft: 'auto', fontSize: 11, padding: '2px 8px', borderRadius: 4,
+            border: '1px solid var(--es-n-100)', background: 'none',
+            cursor: 'pointer', color: 'var(--es-n-500)',
+          }}
+        >
+          {managing ? 'Done' : 'Manage Team'}
+        </button>
       </div>
+
+      {managing && (
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--es-n-50)', background: 'var(--es-n-25)' }}>
+          <div style={{ fontSize: 11, color: 'var(--es-n-400)', marginBottom: 6 }}>
+            All operators in your organisation:
+          </div>
+          {orgOperators.length === 0
+            ? <div style={{ fontSize: 11, color: 'var(--es-n-300)' }}>No other operators found.</div>
+            : orgOperators.map(op => (
+              <div key={op.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                <span style={{ flex: 1, fontSize: 12 }}>{op.display_name ?? op.email}</span>
+                <span style={{ fontSize: 11, color: 'var(--es-n-300)' }}>{op.email}</span>
+                <button
+                  onClick={() => op.in_team ? onRemove(op.id) : onAdd(op.id)}
+                  style={{
+                    fontSize: 11, padding: '2px 10px', borderRadius: 4, cursor: 'pointer',
+                    border: '1px solid',
+                    borderColor: op.in_team ? 'var(--es-n-200)' : 'var(--es-brand)',
+                    background: op.in_team ? 'none' : 'var(--es-brand)',
+                    color: op.in_team ? 'var(--es-n-500)' : 'white',
+                  }}
+                >
+                  {op.in_team ? 'Remove' : 'Add'}
+                </button>
+              </div>
+            ))
+          }
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
       <table className="es-table" style={{ tableLayout: 'fixed', width: '100%' }}>
         <colgroup>
@@ -951,10 +1004,11 @@ function GanttCard({ cases, profiles, loading }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function OperationsPage() {
-  const [teamKpis, setTeamKpis] = useState<TeamKpi[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [vendors,  setVendors]  = useState<Vendor[]>([])
-  const [loading,  setLoading]  = useState(true)
+  const [teamKpis,     setTeamKpis]     = useState<TeamKpi[]>([])
+  const [profiles,     setProfiles]     = useState<Profile[]>([])
+  const [vendors,      setVendors]      = useState<Vendor[]>([])
+  const [orgOperators, setOrgOperators] = useState<OrgOperator[]>([])
+  const [loading,      setLoading]      = useState(true)
 
   useEffect(() => {
     let alive = true
@@ -963,15 +1017,18 @@ export default function OperationsPage() {
         { data: teamKpisData },
         { data: profilesData },
         { data: vendorsData },
+        { data: orgOpsData },
       ] = await Promise.all([
         supabase.rpc('get_team_kpis'),
         supabase.from('profiles').select('*'),
         supabase.from('vendors').select('*'),
+        supabase.rpc('get_org_operators'),
       ])
       if (!alive) return
       setTeamKpis((teamKpisData as TeamKpi[]) ?? [])
       setProfiles(profilesData ?? [])
       setVendors(vendorsData ?? [])
+      setOrgOperators((orgOpsData as OrgOperator[]) ?? [])
       setLoading(false)
 
       // Heartbeat — stamp presence so the online indicator reflects active managers
@@ -987,6 +1044,26 @@ export default function OperationsPage() {
     return () => { alive = false }
   }, [])
 
+  async function handleAddOperator(operatorId: string) {
+    await supabase.from('manager_team_members').insert({ operator_id: operatorId })
+    const [{ data: kpis }, { data: ops }] = await Promise.all([
+      supabase.rpc('get_team_kpis'),
+      supabase.rpc('get_org_operators'),
+    ])
+    setTeamKpis((kpis as TeamKpi[]) ?? [])
+    setOrgOperators((ops as OrgOperator[]) ?? [])
+  }
+
+  async function handleRemoveOperator(operatorId: string) {
+    await supabase.from('manager_team_members').delete().eq('operator_id', operatorId)
+    const [{ data: kpis }, { data: ops }] = await Promise.all([
+      supabase.rpc('get_team_kpis'),
+      supabase.rpc('get_org_operators'),
+    ])
+    setTeamKpis((kpis as TeamKpi[]) ?? [])
+    setOrgOperators((ops as OrgOperator[]) ?? [])
+  }
+
   return (
     <main className="dashboard-main">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 10, alignItems: 'stretch' }}>
@@ -995,7 +1072,7 @@ export default function OperationsPage() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'stretch' }}>
         <AlertsPanel cases={[]} emails={[]} loading={loading} />
-        <OperatorTable kpis={teamKpis} loading={loading} />
+        <OperatorTable kpis={teamKpis} orgOperators={orgOperators} loading={loading} onAdd={handleAddOperator} onRemove={handleRemoveOperator} />
       </div>
       <GanttCard cases={[]} profiles={profiles} loading={loading} />
       <KanbanBoard cases={[]} profiles={profiles} loading={loading} />

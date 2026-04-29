@@ -238,6 +238,7 @@ export interface Profile {
   email:        string
   display_name: string | null
   role:         'operator' | 'manager'
+  last_seen_at: string | null
   created_at:   string
 }
 

@@ -6,13 +6,23 @@ import { useEffect, useRef, useState } from 'react'
 import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, Handshake, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-const ITEMS = [
+const COORDINATOR_ITEMS = [
   { href: '/inbox',      icon: Mail,            label: 'Mail' },
   { href: '/workbench',  icon: Briefcase,       label: 'Workbench' },
   { href: '/cases',      icon: FolderOpen,      label: 'Cases' },
   { href: '/crm',        icon: Users,           label: 'CRM' },
   { href: '/reports',    icon: BarChart2,       label: 'Reports' },
   { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
+] as const
+
+const MANAGER_ITEMS = [
+  { href: '/inbox',      icon: Mail,            label: 'Mail' },
+  { href: '/workbench',  icon: Briefcase,       label: 'Workbench' },
+  { href: '/cases',      icon: FolderOpen,      label: 'Cases' },
+  { href: '/crm',        icon: Users,           label: 'CRM' },
+  { href: '/reports',    icon: BarChart2,       label: 'Reports' },
+  { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/operations', icon: Handshake,       label: 'Operations' },
 ] as const
 
 const EMAIL_ROUTES = ['/inbox', '/sent', '/starred', '/drafts', '/spam', '/bin', '/archive']
@@ -70,19 +80,12 @@ export default function AppRail() {
 
   return (
     <div className="es-app-rail" style={{ position: 'relative' }}>
-      {ITEMS.map(({ href, icon: Icon, label }) => (
+      {(role === 'manager' ? MANAGER_ITEMS : COORDINATOR_ITEMS).map(({ href, icon: Icon, label }) => (
         <Link key={href} href={href} aria-label={label} className={isActive(href) ? 'active' : ''} style={{ position: 'relative' }}>
           <Icon size={16} strokeWidth={1.5} />
           <span className="rail-tooltip">{label}</span>
         </Link>
       ))}
-
-      {role === 'manager' && (
-        <Link href="/operations" aria-label="Operations" className={isActive('/operations') ? 'active' : ''} style={{ position: 'relative' }}>
-          <Handshake size={16} strokeWidth={1.5} />
-          <span className="rail-tooltip">Operations</span>
-        </Link>
-      )}
 
       <div className="spacer" />
 
