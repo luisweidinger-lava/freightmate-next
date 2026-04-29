@@ -4,9 +4,11 @@ import ShellActions  from '@/components/email/shell/ShellActions'
 import AppRail       from '@/components/email/shell/AppRail'
 import FolderRail    from '@/components/email/shell/FolderRail'
 import { ComposeProvider } from '@/lib/compose-context'
+import { UserProvider } from '@/components/UserProvider'
 
 export default function EmailLayout({ children }: { children: React.ReactNode }) {
   return (
+    <UserProvider>
     <ComposeProvider>
       <div className="email-shell">
         <TitleBar />
@@ -25,5 +27,6 @@ export default function EmailLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
     </ComposeProvider>
+    </UserProvider>
   )
 }

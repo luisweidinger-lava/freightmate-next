@@ -3,9 +3,11 @@ import DynamicPageBar from '@/components/email/shell/DynamicPageBar'
 import ShellActions  from '@/components/email/shell/ShellActions'
 import AppRail       from '@/components/email/shell/AppRail'
 import CaseRail      from '@/components/workbench/CaseRail'
+import { UserProvider } from '@/components/UserProvider'
 
 export default function WorkbenchLayout({ children }: { children: React.ReactNode }) {
   return (
+    <UserProvider>
     <div className="email-shell">
       <TitleBar />
       <DynamicPageBar />
@@ -22,5 +24,6 @@ export default function WorkbenchLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     </div>
+    </UserProvider>
   )
 }

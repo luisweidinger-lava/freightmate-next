@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function proxy(request: NextRequest) {
@@ -31,6 +32,13 @@ export async function proxy(request: NextRequest) {
         },
       },
     }
+  )
+
+  // Service-role client for privilege-sensitive lookups (profiles, role checks)
+  // profiles has no RLS/grants — user-scoped client silently returns null
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -68,7 +76,7 @@ export async function proxy(request: NextRequest) {
 
   // /operations is manager-only
   if (pathname.startsWith('/operations')) {
-    const { data: profile } = await supabase
+    const { data: profile } = await admin
       .from('profiles')
       .select('role')
       .eq('id', user.id)

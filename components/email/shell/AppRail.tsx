@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, Handshake, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useUser } from '@/components/UserProvider'
 
 const COORDINATOR_ITEMS = [
   { href: '/inbox',      icon: Mail,            label: 'Mail' },
@@ -22,7 +23,7 @@ const MANAGER_ITEMS = [
   { href: '/crm',        icon: Users,           label: 'CRM' },
   { href: '/reports',    icon: BarChart2,       label: 'Reports' },
   { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/operations', icon: Handshake,       label: 'Operations' },
+  { href: '/operations', icon: Handshake,       label: "Manager's dashboard" },
 ] as const
 
 const EMAIL_ROUTES = ['/inbox', '/sent', '/starred', '/drafts', '/spam', '/bin', '/archive']
@@ -31,20 +32,9 @@ export default function AppRail() {
   const pathname = usePathname()
   const router   = useRouter()
 
-  const [user, setUser]     = useState<{ email?: string; user_metadata?: { full_name?: string; name?: string } } | null>(null)
-  const [role, setRole]     = useState<string | null>(null)
+  const { user, role } = useUser()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user)
-      if (data.user) {
-        supabase.from('profiles').select('role').eq('id', data.user.id).single()
-          .then(({ data: p }) => setRole(p?.role ?? 'operator'))
-      }
-    })
-  }, [])
 
   // Close menu on outside click
   useEffect(() => {
