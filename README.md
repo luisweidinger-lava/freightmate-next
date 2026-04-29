@@ -3,7 +3,7 @@
  
 ---
  
-## 🔍 What We're Building
+## What We're Building
  
 Nexio is an **operator platform** designed for freight forwarding SMEs in Kenya and East Africa. Rather than requiring companies to migrate to an entirely new ERP system, Nexio integrates directly into existing email infrastructure as a lightweight add-on — structuring the coordination layer that most operators currently manage through their inbox. It bridges the gap between **clients** who need goods transported and the **contractors** who do the actual moving, without disrupting the tools teams already rely on.
  
