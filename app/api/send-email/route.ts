@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 
 // ── Nylas send pipeline ────────────────────────────────────────────────────────
 // POST /v3/grants/{NYLAS_GRANT_ID}/messages/send
@@ -9,24 +10,42 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
   const apiKey    = process.env.NYLAS_API_KEY
-  const grantId   = process.env.NYLAS_GRANT_ID
   const nylasBase = process.env.NYLAS_API_BASE ?? 'https://api.us.nylas.com'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!apiKey || !grantId) {
-    return Response.json({ error: 'NYLAS_API_KEY or NYLAS_GRANT_ID not configured' }, { status: 500 })
+  if (!apiKey) {
+    return Response.json({ error: 'NYLAS_API_KEY not configured' }, { status: 500 })
   }
   if (!supabaseUrl || !supabaseKey) {
     return Response.json({ error: 'Supabase not configured' }, { status: 500 })
   }
+
+  const supabase = createClient(supabaseUrl, supabaseKey)
+
+  // Resolve calling user's Nylas grant
+  const supabaseAuth = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+  )
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return Response.json({ error: 'Unauthenticated' }, { status: 401 })
+
+  const { data: appUser } = await supabase
+    .from('app_users').select('mailbox_id').eq('id', user.id).single()
+  const { data: mailbox } = await supabase
+    .from('mailboxes').select('nylas_grant_id').eq('id', appUser!.mailbox_id).single()
+  const grantId  = mailbox?.nylas_grant_id
+  const mailboxId = appUser!.mailbox_id
+  if (!grantId) return Response.json({ error: 'No Nylas grant for this user' }, { status: 500 })
 
   const { to, cc, bcc, subject, body, replyToNylasMessageId, case_id, channel_id, create_channel_label, create_channel_type } = await req.json()
 
   // If caller requests a new channel, create it before sending
   let resolvedChannelId: string | null = channel_id ?? null
   if (case_id && !channel_id && (create_channel_label || create_channel_type) && to) {
-    const supabaseForChannel = createClient(supabaseUrl, supabaseKey)
+    const supabaseForChannel = supabase
     const { data: existing } = await supabaseForChannel
       .from('case_channels')
       .select('position')
@@ -100,7 +119,6 @@ export async function POST(req: NextRequest) {
   const nylas_message_id = sent.data?.id ?? null
 
   // Record sent message in Supabase
-  const supabase = createClient(supabaseUrl, supabaseKey)
   await supabase.from('email_messages').insert({
     nylas_message_id,
     nylas_thread_id:  sent.data?.thread_id ?? null,
@@ -120,6 +138,7 @@ export async function POST(req: NextRequest) {
     channel_id:       resolvedChannelId,
     created_at:       new Date().toISOString(),
     visibility:       'internal',
+    mailbox_id:       mailboxId,
   })
 
   return Response.json({ ok: true, nylas_message_id })

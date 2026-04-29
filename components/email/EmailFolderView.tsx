@@ -44,11 +44,20 @@ function ListSkeleton() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function EmailFolderView({ folder }: { folder: Folder }) {
+  const [mailboxId, setMailboxId] = useState<string | null | undefined>(undefined)
   const [emails,   setEmails]   = useState<EmailMessage[]>([])
   const [selected, setSelected] = useState<EmailMessage | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [listWidth, setListWidth] = useState(320)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setMailboxId(null); return }
+      supabase.from('app_users').select('mailbox_id').eq('id', user.id).single()
+        .then(({ data }) => setMailboxId(data?.mailbox_id ?? null))
+    })
+  }, [])
 
   function startDrag(e: React.MouseEvent) {
     e.preventDefault()
@@ -66,8 +75,10 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
   }
 
   async function load() {
+    if (mailboxId === undefined) return
     setLoading(true)
     let query = supabase.from('email_messages').select('*').order('created_at', { ascending: false })
+    if (mailboxId) query = query.eq('mailbox_id', mailboxId)
     if (folder === 'starred') {
       query = query.eq('is_starred', true)
     } else {
@@ -78,7 +89,7 @@ export default function EmailFolderView({ folder }: { folder: Folder }) {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [folder]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [folder, mailboxId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Actions ────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 
 // POST /api/nylas-move
 // Body: { messageId: string, folder: 'TRASH' | 'SPAM' }
@@ -7,12 +9,30 @@ import { NextRequest } from 'next/server'
 
 export async function POST(req: NextRequest) {
   const apiKey    = process.env.NYLAS_API_KEY
-  const grantId   = process.env.NYLAS_GRANT_ID
   const nylasBase = process.env.NYLAS_API_BASE ?? 'https://api.us.nylas.com'
 
-  if (!apiKey || !grantId) {
+  if (!apiKey) {
     return Response.json({ error: 'Nylas not configured' }, { status: 500 })
   }
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+  const supabaseAuth = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+  )
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return Response.json({ error: 'Unauthenticated' }, { status: 401 })
+
+  const { data: appUser } = await supabase
+    .from('app_users').select('mailbox_id').eq('id', user.id).single()
+  const { data: mailbox } = await supabase
+    .from('mailboxes').select('nylas_grant_id').eq('id', appUser!.mailbox_id).single()
+  const grantId = mailbox?.nylas_grant_id
+  if (!grantId) return Response.json({ error: 'No Nylas grant for this user' }, { status: 500 })
 
   const { messageId, folder } = await req.json()
   if (!messageId || !folder) {

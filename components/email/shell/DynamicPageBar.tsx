@@ -12,6 +12,7 @@ const TITLE_MAP: Record<string, string> = {
   '/archive': 'Archive',
   '/cases':   'Cases',
   '/dashboard': 'Dashboard',
+  '/operations': 'Operations',
   '/workbench': 'Workbench',
   '/crm':     'CRM',
   '/reports': 'Reports',

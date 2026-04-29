@@ -3,16 +3,26 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, LogOut } from 'lucide-react'
+import { Mail, Briefcase, FolderOpen, Users, BarChart2, LayoutDashboard, Handshake, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-const ITEMS = [
-  { href: '/inbox',     icon: Mail,            label: 'Mail' },
-  { href: '/workbench', icon: Briefcase,       label: 'Workbench' },
-  { href: '/cases',     icon: FolderOpen,      label: 'Cases' },
-  { href: '/crm',       icon: Users,           label: 'CRM' },
-  { href: '/reports',   icon: BarChart2,       label: 'Reports' },
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+const COORDINATOR_ITEMS = [
+  { href: '/inbox',      icon: Mail,            label: 'Mail' },
+  { href: '/workbench',  icon: Briefcase,       label: 'Workbench' },
+  { href: '/cases',      icon: FolderOpen,      label: 'Cases' },
+  { href: '/crm',        icon: Users,           label: 'CRM' },
+  { href: '/reports',    icon: BarChart2,       label: 'Reports' },
+  { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
+] as const
+
+const MANAGER_ITEMS = [
+  { href: '/inbox',      icon: Mail,            label: 'Mail' },
+  { href: '/workbench',  icon: Briefcase,       label: 'Workbench' },
+  { href: '/cases',      icon: FolderOpen,      label: 'Cases' },
+  { href: '/crm',        icon: Users,           label: 'CRM' },
+  { href: '/reports',    icon: BarChart2,       label: 'Reports' },
+  { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/operations', icon: Handshake,       label: 'Operations' },
 ] as const
 
 const EMAIL_ROUTES = ['/inbox', '/sent', '/starred', '/drafts', '/spam', '/bin', '/archive']
@@ -22,11 +32,18 @@ export default function AppRail() {
   const router   = useRouter()
 
   const [user, setUser]     = useState<{ email?: string; user_metadata?: { full_name?: string; name?: string } } | null>(null)
+  const [role, setRole]     = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user)
+      if (data.user) {
+        supabase.from('profiles').select('role').eq('id', data.user.id).single()
+          .then(({ data: p }) => setRole(p?.role ?? 'operator'))
+      }
+    })
   }, [])
 
   // Close menu on outside click
@@ -63,9 +80,10 @@ export default function AppRail() {
 
   return (
     <div className="es-app-rail" style={{ position: 'relative' }}>
-      {ITEMS.map(({ href, icon: Icon, label }) => (
-        <Link key={href} href={href} aria-label={label} className={isActive(href) ? 'active' : ''}>
+      {(role === 'manager' ? MANAGER_ITEMS : COORDINATOR_ITEMS).map(({ href, icon: Icon, label }) => (
+        <Link key={href} href={href} aria-label={label} className={isActive(href) ? 'active' : ''} style={{ position: 'relative' }}>
           <Icon size={16} strokeWidth={1.5} />
+          <span className="rail-tooltip">{label}</span>
         </Link>
       ))}
 
