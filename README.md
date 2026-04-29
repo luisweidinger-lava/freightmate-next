@@ -1,4 +1,4 @@
-# Nexio 🚢
+# Nexio - The Nexus of Freight Forwarding Logistics
 > An AI-powered coordination layer for freight forwarding SMEs — built to enhance existing workflows, not replace them.
  
 ---
@@ -11,7 +11,7 @@ The platform handles the full coordination lifecycle: job assignment, contractor
  
 ---
  
-## ⚠️ The Problem
+## The Problem
  
 Kenya's freight market moves billions of dollars worth of goods every year, yet the coordination layer between clients and contractors remains largely unstructured. Operators manage cases primarily through email — a process that is slow, error-prone, and difficult to oversee. Relevant information gets buried in long threads, documents are scattered across inboxes, and critical updates are easily overlooked.
  
@@ -24,7 +24,7 @@ This creates a set of compounding problems:
 - **Absence of in-context collaboration** — there is no way for managers to engage with coordinators directly on a specific case. Communication relies on in-person conversations, disconnected from the actual work
 ---
  
-## 📊 The Market
+## The Market
  
 Kenya is East Africa's dominant logistics hub, with the sector valued at approximately **USD 1.4 billion (2023)** and projected to reach **USD 10.3 billion by 2032** (CAGR ~24.8%). Road freight is the primary mode, serving both domestic routes and landlocked neighbouring countries including Uganda, Rwanda, and South Sudan. Kenya's freight and warehousing sector comprises over **1,200 registered companies** under KIFWA (Kenya International Freight and Warehousing Association), the majority of which are small and mid-sized operators — representing Nexio's core addressable market. The actual number of active logistics operators in the country is likely higher, as a portion of the market operates outside formal registration.
  
@@ -36,15 +36,15 @@ Kenya's digital infrastructure makes the timing right: internet penetration exce
  
 ---
  
-## 💼 Business Model
+## Business Model
  
 Nexio is offered as a **SaaS subscription** to logistics companies, delivering value across two interconnected dashboards.
  
-**🖥️ Operator Dashboard**
+** Operator Dashboard**
  
 The operator dashboard is designed to eliminate the inefficiencies of email-based case management. Incoming emails are automatically tagged and assigned to the relevant case, so nothing gets lost in a cluttered inbox. Operators work in a split-screen messaging interface that keeps client and contractor communication in one view, alongside all associated documents. Uploaded documents are automatically analysed for key information extraction, and each case maintains a continuously updated AI-generated summary — giving operators an at-a-glance overview of where every shipment stands without digging through threads.
  
-**📈 Manager Dashboard**
+** Manager Dashboard**
  
 The manager dashboard provides company-wide visibility through data analysis and KPI reporting, giving managers the operational insights they need to run the business efficiently and distribute workload across their team. Through the aggregated AI summary on each case, managers can gain a quick understanding of any shipment at a glance. Should a coordinator require support on a case, the manager can step in and assist directly within it — keeping collaboration seamless and in context.
  
@@ -52,7 +52,7 @@ Together, both dashboards form an integrated system that empowers coordinators a
  
 ---
  
-## 🚧 Status
+## Status
  
 Nexio is currently in active development as part of a university AI project. The codebase is structured as follows:
  
@@ -71,7 +71,7 @@ Nexio is currently in active development as part of a university AI project. The
  
 ---
  
-## 🏗️ Architecture
+## Architecture
  
 Nexio connects to the logistics company's existing email infrastructure and layers a structured case-management system on top. Both coordinators and managers work in the same platform — coordinators handle day-to-day case execution while managers oversee, assist, and report across the team.
  
@@ -96,7 +96,7 @@ Nexio connects to the logistics company's existing email infrastructure and laye
 4. **Approved drafts** are dispatched via `/api/approve-draft` → n8n (WF6) → Nylas → recipient, with the sent message recorded against the case.
 ---
  
-## 👥 Team
+## Team
  
 Luis Weidinger, Emanuele Scammacca
 
