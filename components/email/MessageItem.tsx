@@ -57,7 +57,7 @@ export function MsgExpanded({
             {onReply && <button title="Reply" onClick={() => onReply('reply')}><Reply size={13} /></button>}
             {onReply && <button title="Reply all" onClick={() => onReply('replyAll')}><ReplyAll size={13} /></button>}
             {onReply && <button title="Forward" onClick={() => onReply('forward')}><Forward size={13} /></button>}
-            {!isLatest && onCollapse && (
+            {onCollapse && (
               <button title="Collapse" onClick={onCollapse}><ChevronDown size={13} /></button>
             )}
           </div>

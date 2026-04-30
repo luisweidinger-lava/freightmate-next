@@ -129,8 +129,7 @@ export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef,
 
       {/* Thread messages — same component as inbox */}
       <ThreadView
-        messages={messages.length > 1 ? messages : []}
-        singleEmail={messages.length === 1 ? messages[0] : undefined}
+        messages={messages}
       />
 
       {/* AI Draft cards */}
