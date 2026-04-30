@@ -452,7 +452,7 @@ function priorityBadge(p: string) {
 
 export default function DashboardPage() {
   const router  = useRouter()
-  const [userProfile, setUserProfile] = useState<{ id: string; role: string } | null | undefined>(undefined)
+  const [userProfile, setUserProfile] = useState<{ id: string; role: string; mailboxId: string | null } | null | undefined>(undefined)
   const [cases,   setCases]   = useState<ShipmentCase[]>([])
   const [emails,  setEmails]  = useState<EmailMessage[]>([])
   const [drafts,        setDrafts]        = useState<DraftWithCase[]>([])
@@ -463,9 +463,12 @@ export default function DashboardPage() {
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
-      const { data: profile } = await supabase.from('profiles').select('id, role').eq('id', user.id).single()
+      const [{ data: profile }, { data: appUser }] = await Promise.all([
+        supabase.from('profiles').select('id, role').eq('id', user.id).single(),
+        supabase.from('app_users').select('mailbox_id').eq('id', user.id).single(),
+      ])
       if (profile?.role === 'manager') { router.replace('/operations'); return }
-      setUserProfile({ id: user.id, role: profile?.role ?? 'operator' })
+      setUserProfile({ id: user.id, role: profile?.role ?? 'operator', mailboxId: appUser?.mailbox_id ?? null })
     })
   }, [router])
 
@@ -477,8 +480,19 @@ export default function DashboardPage() {
     async function load() {
       const [{ data: casesData }, { data: emailsData }, { data: draftsData }, { count: crmCount }] = await Promise.all([
         opFilter(supabase.from('shipment_cases').select('*')).order('updated_at', { ascending: false }),
-        supabase.from('email_messages').select('*').is('case_id', null).eq('folder', 'inbox').eq('direction', 'inbound').order('created_at', { ascending: false }),
-        supabase.from('draft_tasks').select('*, shipment_cases(ref_number, client_name)').eq('status', 'ready').order('created_at', { ascending: false }),
+        userProfile?.mailboxId
+          ? supabase.from('email_messages').select('*')
+              .is('case_id', null).eq('folder', 'inbox').eq('direction', 'inbound')
+              .eq('mailbox_id', userProfile.mailboxId)
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] as EmailMessage[] }),
+        userProfile
+          ? supabase.from('draft_tasks')
+              .select('*, shipment_cases!inner(ref_number, client_name)')
+              .eq('status', 'ready')
+              .eq('shipment_cases.operator_id', userProfile.id)
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] as DraftWithCase[] }),
         supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('needs_review', true),
       ])
       if (!mounted) return
@@ -498,7 +512,12 @@ export default function DashboardPage() {
           .then(({ data }: { data: ShipmentCase[] | null }) => { if (mounted && data) setCases(data) })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'draft_tasks' }, () => {
-        supabase.from('draft_tasks').select('*, shipment_cases(ref_number, client_name)').eq('status', 'ready').order('created_at', { ascending: false })
+        if (!userProfile) return
+        supabase.from('draft_tasks')
+          .select('*, shipment_cases!inner(ref_number, client_name)')
+          .eq('status', 'ready')
+          .eq('shipment_cases.operator_id', userProfile.id)
+          .order('created_at', { ascending: false })
           .then(({ data }) => { if (mounted && data) setDrafts(data) })
       })
       .subscribe()

@@ -341,6 +341,7 @@ export default function DraftsPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
   const [listWidth, setListWidth] = useState(320)
+  const [userId, setUserId] = useState<string | null>(null)
   const { open } = useCompose()
 
   function startDrag(e: React.MouseEvent) {
@@ -359,16 +360,26 @@ export default function DraftsPage() {
   }
 
   const load = useCallback(async () => {
+    if (!userId) return
     const [draftsRes, casesRes] = await Promise.all([
-      supabase.from('message_drafts').select('*').order('created_at', { ascending: false }),
-      supabase.from('shipment_cases').select('id,ref_number,client_name,case_code'),
+      supabase.from('message_drafts')
+        .select('*, shipment_cases!inner(operator_id)')
+        .eq('shipment_cases.operator_id', userId)
+        .order('created_at', { ascending: false }),
+      supabase.from('shipment_cases')
+        .select('id,ref_number,client_name,case_code')
+        .eq('operator_id', userId),
     ])
     setDrafts(draftsRes.data || [])
     setCases(casesRes.data as ShipmentCase[] || [])
     setLoading(false)
+  }, [userId])
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null))
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, userId])
 
   // Realtime: new drafts arriving
   useEffect(() => {

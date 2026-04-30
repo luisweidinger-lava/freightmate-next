@@ -202,61 +202,55 @@ function TriageBlock({ email, onDone }: { email: EmailMessage; onDone: () => voi
   const [linking, setLinking] = useState(false)
   const [creating, setCreating] = useState(false)
   const [showTypeModal, setShowTypeModal] = useState(false)
+  const [showOtherInput, setShowOtherInput] = useState(false)
+  const [otherLabel, setOtherLabel] = useState('')
+  const [pendingAction, setPendingAction] = useState<'link' | 'create' | null>(null)
   const router = useRouter()
 
-  async function attachEmailToCase(caseId: string, channelType: 'client' | 'vendor') {
-    const { data: chanData, error } = await supabase
-      .from('case_channels')
-      .upsert({
-        case_id: caseId, channel_type: channelType,
-        party_email: email.sender_email || '',
-        nylas_thread_id: email.nylas_thread_id || null,
-      }, { onConflict: 'case_id,channel_type' })
-      .select('id').single()
-    if (error || !chanData) { toast.error('Could not create channel link'); return }
-    await supabase.from('email_messages')
-      .update({ case_id: caseId, channel_id: chanData.id, is_processed: true })
-      .eq('id', email.id)
-  }
-
-  async function linkToCase() {
-    if (!refInput.trim()) return
-    setLinking(true)
-    const { data: caseData } = await supabase
-      .from('shipment_cases').select('id,ref_number')
-      .eq('ref_number', refInput.trim()).maybeSingle()
-    if (!caseData) { toast.error(`No case found with Ref ${refInput.trim()}`); setLinking(false); return }
-    const { data: clientRow } = await supabase
-      .from('clients').select('id').eq('email', email.sender_email ?? '').maybeSingle()
-    await attachEmailToCase(caseData.id, clientRow ? 'client' : 'vendor')
-    toast.success(`Linked to ${formatRef(caseData.ref_number)}`)
-    setLinking(false)
-    onDone()
-  }
-
-  async function handleTypeSelected(type: 'client' | 'vendor') {
+  async function handleTypeSelected(type: 'client' | 'vendor' | 'other', label?: string) {
     setShowTypeModal(false)
-    setCreating(true)
-    const { data: newCase, error } = await supabase
-      .from('shipment_cases')
-      .insert({ ref_number: refInput.trim(), client_email: email.sender_email || '', status: 'new' })
-      .select().single()
-    if (error || !newCase) { toast.error('Could not create case — check Ref is unique'); setCreating(false); return }
-    const { data: contact } = await supabase.from('contacts').insert({
-      email: email.sender_email || '', display_name: null, persona: type, is_validated: true, needs_review: false,
-    }).select().single()
-    if (contact) {
-      if (type === 'client') {
-        await supabase.from('clients').insert({ contact_id: contact.id, email: email.sender_email || '', is_active: true })
-      } else {
-        await supabase.from('vendors').insert({ contact_id: contact.id, name: email.sender_email || '', email: email.sender_email || '', default_mode: 'air', is_active: true })
-      }
+    setShowOtherInput(false)
+    if (pendingAction === 'create') {
+      setCreating(true)
+      const res = await fetch('/api/create-case', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          refNumber: refInput.trim(),
+          senderEmail: email.sender_email || '',
+          senderType: type,
+          label: label ?? null,
+          emailId: email.id,
+          nylasThreadId: email.nylas_thread_id || null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error || 'Could not create case — check Ref is unique'); setCreating(false); setPendingAction(null); return }
+      toast.success(`Case created: ${formatRef(refInput.trim())}`)
+      setCreating(false)
+      onDone()
+      router.push(`/cases/${refInput.trim()}`)
+    } else {
+      setLinking(true)
+      const res = await fetch('/api/link-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailId: email.id,
+          refNumber: refInput.trim(),
+          channelType: type,
+          label: label ?? null,
+          nylasThreadId: email.nylas_thread_id ?? null,
+          senderEmail: email.sender_email ?? '',
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error || 'Could not link email'); setLinking(false); setPendingAction(null); return }
+      toast.success(`Linked to ${formatRef(refInput.trim())}`)
+      setLinking(false)
+      onDone()
     }
-    await attachEmailToCase(newCase.id, type)
-    toast.success(`Case created: ${formatRef(refInput.trim())}`)
-    setCreating(false)
-    onDone()
-    router.push(`/cases/${refInput.trim()}`)
+    setPendingAction(null)
   }
 
   return (
@@ -269,8 +263,29 @@ function TriageBlock({ email, onDone }: { email: EmailMessage; onDone: () => voi
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               <button onClick={() => handleTypeSelected('client')} className="es-rbtn primary" style={{ flex: 1, justifyContent: 'center' }}>Client</button>
               <button onClick={() => handleTypeSelected('vendor')} className="es-rbtn" style={{ flex: 1, justifyContent: 'center', background: '#5B4EE8', color: 'white', borderColor: '#5B4EE8' }}>Vendor</button>
+              <button onClick={() => setShowOtherInput(v => !v)} className="es-rbtn" style={{ flex: 1, justifyContent: 'center' }}>Other</button>
             </div>
-            <button onClick={() => setShowTypeModal(false)} style={{ width: '100%', fontSize: 11, color: 'var(--es-n-400)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+            {showOtherInput && (
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  autoFocus
+                  value={otherLabel}
+                  onChange={e => setOtherLabel(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && otherLabel.trim() && handleTypeSelected('other', otherLabel.trim())}
+                  placeholder="e.g. Internal, Broker, Other…"
+                  style={{ width: '100%', fontSize: 12, padding: '6px 8px', border: '1px solid var(--es-n-200)', borderRadius: 4, marginBottom: 8, boxSizing: 'border-box', color: 'var(--es-n-700)' }}
+                />
+                <button
+                  onClick={() => handleTypeSelected('other', otherLabel.trim())}
+                  disabled={!otherLabel.trim()}
+                  className="es-rbtn primary"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  Confirm
+                </button>
+              </div>
+            )}
+            <button onClick={() => { setShowTypeModal(false); setShowOtherInput(false); setOtherLabel(''); setPendingAction(null) }} style={{ width: '100%', fontSize: 11, color: 'var(--es-n-400)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -283,12 +298,12 @@ function TriageBlock({ email, onDone }: { email: EmailMessage; onDone: () => voi
             placeholder="Ref number (e.g. 354830)"
             value={refInput}
             onChange={e => setRefInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && linkToCase()}
+            onKeyDown={e => { if (e.key === 'Enter' && refInput.trim()) { setPendingAction('link'); setShowTypeModal(true) } }}
           />
-          <button className="es-rbtn" onClick={linkToCase} disabled={linking || !refInput.trim()}>
+          <button className="es-rbtn" onClick={() => { if (refInput.trim()) { setPendingAction('link'); setShowTypeModal(true) } }} disabled={linking || !refInput.trim()}>
             <Link2 size={12} /> {linking ? 'Linking…' : 'Link to case'}
           </button>
-          <button className="es-rbtn primary" onClick={() => { if (refInput.trim()) setShowTypeModal(true) }} disabled={creating || !refInput.trim()}>
+          <button className="es-rbtn primary" onClick={() => { if (refInput.trim()) { setPendingAction('create'); setShowTypeModal(true) } }} disabled={creating || !refInput.trim()}>
             <Plus size={12} /> {creating ? 'Creating…' : 'Create new case'}
           </button>
           <button className="es-rbtn" onClick={async () => {

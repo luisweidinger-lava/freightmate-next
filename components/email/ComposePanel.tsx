@@ -142,9 +142,16 @@ export default function ComposePanel({ mode, replyTo, initialDraft, onClose }: C
     }
   }
 
+  async function discardAndClose() {
+    if (draftId) {
+      await fetch(`/api/save-compose-draft?id=${draftId}`, { method: 'DELETE' }).catch(() => {})
+    }
+    onClose()
+  }
+
   function handleDiscard() {
     if (isDirty) { setConfirmDiscard(true); return }
-    onClose()
+    discardAndClose()
   }
 
   function handleExpand() {
@@ -289,7 +296,7 @@ export default function ComposePanel({ mode, replyTo, initialDraft, onClose }: C
             <span>Save before closing?</span>
             <button className="es-cdc-cancel"   onClick={() => setConfirmDiscard(false)}>Cancel</button>
             <button className="es-cdc-save"     onClick={saveDraft}>Save Draft</button>
-            <button className="es-cdc-confirm"  onClick={onClose}>Discard</button>
+            <button className="es-cdc-confirm"  onClick={discardAndClose}>Discard</button>
           </div>
         ) : (
           <button className="es-cf-discard" onClick={handleDiscard}>

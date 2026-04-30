@@ -45,9 +45,10 @@ function InboxContent() {
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const LIST_WIDTH_KEY = 'fm_list_width'
-  const [listWidth, setListWidth] = useState(() => {
-    try { return Number(localStorage.getItem(LIST_WIDTH_KEY)) || 360 } catch { return 360 }
-  })
+  const [listWidth, setListWidth] = useState(360)
+  useEffect(() => {
+    try { const s = Number(localStorage.getItem(LIST_WIDTH_KEY)); if (s) setListWidth(s) } catch { /* ignore */ }
+  }, [])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -94,9 +95,10 @@ function InboxContent() {
     const list = (data || []) as EmailMessage[]
     setEmails(list)
 
-    // Keep selection if email is still in inbox; clear it only if it moved out (bin/spam/archive)
-    if (selectedIdRef.current && !list.find(e => e.id === selectedIdRef.current)) {
-      setSelected(null)
+    // Refresh selected with latest data; clear only if email left the list entirely
+    if (selectedIdRef.current) {
+      const refreshed = list.find(e => e.id === selectedIdRef.current)
+      setSelected(refreshed ?? null)
     }
 
     if (idParam) {
