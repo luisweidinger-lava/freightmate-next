@@ -170,6 +170,10 @@ function NewContactModal({ onSave, onClose }: {
   async function save() {
     if (saving || !email.trim()) return
     setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSaving(false); return }
+    const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
+    if (!profile?.org_id) { setSaving(false); return }
     const domain = email.trim().split('@')[1] ?? ''
     const { data, error } = await supabase.from('contacts').upsert({
       email: email.trim(),
@@ -179,6 +183,9 @@ function NewContactModal({ onSave, onClose }: {
       company_domain: domain || null,
       is_validated: true,
       needs_review: false,
+      owner_user_id: user.id,
+      org_id: profile.org_id,
+      visibility_scope: 'org',
     }, { onConflict: 'email' }).select().single()
     if (error || !data) { setSaving(false); return }
     if (persona === 'client') {

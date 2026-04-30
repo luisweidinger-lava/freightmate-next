@@ -109,11 +109,11 @@ const isGoneSilent = (c: ShipmentCase) => {
 
 interface DropdownOption { value: string; label: string; badge?: string }
 
-function RibbonDropdown({ id, label, options, value, onChange, openId, setOpenId, multi = true }: {
+function RibbonDropdown({ id, label, options, value, onChange, openId, setOpenId, multi = true, noReset }: {
   id: string; label: string; options: DropdownOption[]
   value: string[]; onChange: (v: string[]) => void
   openId: string | null; setOpenId: (id: string | null) => void
-  multi?: boolean
+  multi?: boolean; noReset?: boolean
 }) {
   const isOpen = openId === id
   const count  = value.length
@@ -130,6 +130,7 @@ function RibbonDropdown({ id, label, options, value, onChange, openId, setOpenId
     if (multi) {
       onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v])
     } else {
+      if (noReset && value[0] === v) { setOpenId(null); return }
       onChange(value[0] === v ? [] : [v])
       setOpenId(null)
     }
@@ -137,10 +138,10 @@ function RibbonDropdown({ id, label, options, value, onChange, openId, setOpenId
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button className={`es-rbtn${count > 0 ? ' es-rbtn--filtered' : ''}`}
+      <button className={`es-rbtn${count > 0 && !noReset ? ' es-rbtn--filtered' : ''}`}
         onClick={() => setOpenId(isOpen ? null : id)}>
         {label}
-        {count > 0 && <span className="ribbon-badge">{count}</span>}
+        {count > 0 && !noReset && <span className="ribbon-badge">{count}</span>}
         <ChevronDown size={10} style={{ opacity: 0.5, marginLeft: 1 }} strokeWidth={1.5} />
       </button>
       {isOpen && (
@@ -160,7 +161,7 @@ function RibbonDropdown({ id, label, options, value, onChange, openId, setOpenId
               </label>
             ))}
           </div>
-          {count > 0 && (
+          {count > 0 && !noReset && (
             <button className="ribbon-dd-clear"
               onClick={() => { onChange([]); setOpenId(null) }}>
               Clear filter
@@ -226,7 +227,7 @@ function CasesRibbon({ filters, setFilters, sort, setSort, search, setSearch, to
         <RibbonDropdown
           id="sort" label={`Sort: ${sortLabel}`} options={SORT_OPTIONS}
           value={[sort.key]} onChange={v => v[0] && setSort(s => ({ ...s, key: v[0] }))}
-          openId={openId} setOpenId={setOpenId} multi={false}
+          openId={openId} setOpenId={setOpenId} multi={false} noReset={true}
         />
         <button className="es-rbtn icon"
           title={sort.dir === 'asc' ? 'Ascending — click to reverse' : 'Descending — click to reverse'}

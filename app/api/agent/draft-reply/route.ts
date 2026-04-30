@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,6 +9,14 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest) {
   try {
+    const supabaseAuth = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => req.cookies.getAll(), setAll: () => {} } }
+    )
+    const { data: { user } } = await supabaseAuth.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+
     const { draft_task_id, case_id, channel_type, draft_type } = await req.json()
 
     if (!draft_task_id || !case_id || !channel_type) {
@@ -17,12 +26,15 @@ export async function POST(req: NextRequest) {
     // Fetch case row — we need mailbox_id and case context
     const { data: caseRow, error: caseError } = await supabase
       .from('shipment_cases')
-      .select('id, mailbox_id, ref_number, client_name, client_email, origin, destination, status, item_desc, rate_amount, rate_currency')
+      .select('id, mailbox_id, operator_id, ref_number, client_name, client_email, origin, destination, status, item_desc, rate_amount, rate_currency')
       .eq('id', case_id)
       .single()
 
     if (caseError || !caseRow?.mailbox_id) {
       throw new Error('No mailbox_id found for case_id: ' + case_id)
+    }
+    if (caseRow.operator_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Load thread summary for context

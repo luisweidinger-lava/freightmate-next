@@ -2,12 +2,14 @@
 
 import React, { useEffect, useRef, useState, use } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, RefreshCw, PanelRightClose, PanelRightOpen, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ShipmentCase, CaseChannel, EmailMessage, MessageDraft, ThreadSummary } from '@/lib/types'
 import { formatRef } from '@/lib/utils'
 import { WorkbenchThreadCol } from '@/components/workbench/WorkbenchThreadCol'
 import { IntelPanel } from '@/components/workbench/IntelPanel'
+import { useUser } from '@/components/UserProvider'
 
 const INTEL_KEY        = 'wb_intel_open'
 const INTEL_FOLDED_KEY = 'wb_intel_folded'
@@ -60,6 +62,8 @@ function virtualChannel(caseId: string, type: 'client' | 'vendor' | 'other', pos
 
 export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = use(params)
+  const router = useRouter()
+  const { user, role } = useUser()
 
   const [shipmentCase,    setCase]    = useState<ShipmentCase | null>(null)
   const [channels,        setChannels] = useState<CaseChannel[]>([])
@@ -128,6 +132,10 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
       : { data: null }
     const caseData = byRef || byId
     if (!caseData) { setLoading(false); return }
+    if (role !== 'manager' && user?.id && caseData.operator_id !== user.id) {
+      router.replace('/workbench')
+      return
+    }
     setCase(caseData)
 
     const caseId = caseData.id

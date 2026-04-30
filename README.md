@@ -85,7 +85,7 @@ Nexio connects to the logistics company's existing email infrastructure and laye
 | Logic layer       | **MCP server** — exposes tooling for AI agents and shared business logic (case lookups, draft handling) |
 | Orchestration layer | **n8n** — handles inbound email processing, AI invocations, and outbound sends      |
 | Email integration | **Nylas v3 (EU)** — connects the company's operations mailbox (Gmail) to the platform |
-| AI                | AI agents hosted in Next.js, orchestrated via n8n workflows for case summaries, draft generation, and email classification (currently using GPT-4o mini, migrating to Claude 3.5 Haiku for improved instruction-following and cost efficiency) |
+| AI                | **Claude Opus 4.7** — primary email agent (case summaries, draft generation, coordination intelligence); **GPT-4o mini** — lightweight n8n task automation |
 | Hosting           | **Vercel** — serverless deployment with automatic preview environments per branch   |
  
 ### Data flow (high level)

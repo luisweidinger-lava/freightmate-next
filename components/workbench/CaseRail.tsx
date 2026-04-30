@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronDown, ChevronRight, LayoutList } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useUser } from '@/components/UserProvider'
 import { ShipmentCase } from '@/lib/types'
 import { formatRef } from '@/lib/utils'
 
@@ -31,6 +32,7 @@ const STATUS_BG: Record<string, string> = {
 
 export default function CaseRail() {
   const pathname = usePathname()
+  const { user, role, loaded } = useUser()
   const [cases,   setCases]   = useState<ShipmentCase[]>([])
   const [loading, setLoading] = useState(true)
   const [open,    setOpen]    = useState(true)
@@ -42,10 +44,13 @@ export default function CaseRail() {
 
   useEffect(() => {
     async function fetch() {
+      if (!loaded) return
+      if (role === 'manager') { setCases([]); setLoading(false); return }
       const { data } = await supabase
         .from('shipment_cases')
         .select('id, ref_number, status, client_name, priority, updated_at')
         .not('status', 'in', '("closed","delivered")')
+        .eq('operator_id', user?.id)
         .order('updated_at', { ascending: false })
         .limit(40)
       setCases((data || []) as ShipmentCase[])
@@ -56,7 +61,7 @@ export default function CaseRail() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shipment_cases' }, fetch)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [user?.id, role, loaded])
 
   function startDrag(e: React.MouseEvent) {
     e.preventDefault()
