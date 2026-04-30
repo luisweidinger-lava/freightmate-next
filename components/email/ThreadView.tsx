@@ -36,7 +36,8 @@ export default function ThreadView({ messages, singleEmail, summary, onReply }: 
     })
   }
 
-  const displayThread = messages.length > 1 ? messages : null
+  // messages.length > 0 so workbench single-message channels also get fold behaviour
+  const displayThread = messages.length > 0 ? messages : null
 
   return (
     <div className="es-thread-scroll">
@@ -65,7 +66,7 @@ export default function ThreadView({ messages, singleEmail, summary, onReply }: 
         displayThread.map((msg, i) => {
           const isLatest = i === displayThread.length - 1
           const isExpanded = expandedIds.has(msg.id)
-          if (!isExpanded && !isLatest) {
+          if (!isExpanded) {
             return <MsgCollapsed key={msg.id} msg={msg} onExpand={() => toggleExpand(msg.id)} />
           }
           return (
@@ -73,7 +74,7 @@ export default function ThreadView({ messages, singleEmail, summary, onReply }: 
               key={msg.id}
               msg={msg}
               isLatest={isLatest}
-              onCollapse={!isLatest ? () => toggleExpand(msg.id) : undefined}
+              onCollapse={() => toggleExpand(msg.id)}
               onReply={onReply ? (mode) => onReply(mode, msg) : undefined}
             />
           )

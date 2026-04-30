@@ -8,6 +8,7 @@ import {
   Trash2, AlertOctagon, Archive, AlertTriangle, Briefcase, Globe,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useUser } from '@/components/UserProvider'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,7 +134,9 @@ function Group({ label, open, onToggle, children }: {
 // ── FolderRail ───────────────────────────────────────────────────────────────
 
 function FolderRailInner() {
+  const { user } = useUser()
   const [mailboxId, setMailboxId] = useState<string | null | undefined>(undefined)
+  const [userId,    setUserId]    = useState<string | null | undefined>(undefined)
   const [counts,   setCounts]   = useState<Counts>({ inbox: 0, drafts: 0, urgent: 0, unmatched: 0, fromClients: 0, fromVendors: 0 })
   const [favOpen,  setFavOpen]  = useState(true)
   const [acctOpen, setAcctOpen] = useState(true)
@@ -145,7 +148,8 @@ function FolderRailInner() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { setMailboxId(null); return }
+      if (!user) { setMailboxId(null); setUserId(null); return }
+      setUserId(user.id)
       supabase.from('app_users').select('mailbox_id').eq('id', user.id).single()
         .then(({ data }) => setMailboxId(data?.mailbox_id ?? null))
     })
@@ -166,17 +170,21 @@ function FolderRailInner() {
 
   // Supabase realtime counts
   const fetchCounts = useCallback(async () => {
-    if (mailboxId === undefined) return
+    if (mailboxId === undefined || userId === undefined) return
     const mbFilter = (q: any) => mailboxId ? q.eq('mailbox_id', mailboxId) : q
     const [unreadRes, draftsRes, unmatchedRes, clientRes, vendorRes] = await Promise.all([
       // Unread inbox
       mbFilter(supabase.from('email_messages')
         .select('*', { count: 'exact', head: true })
         .eq('is_read', false).eq('folder', 'inbox')),
-      // Pending drafts
-      supabase.from('message_drafts')
-        .select('*', { count: 'exact', head: true })
-        .is('approved_at', null).is('rejected_at', null).is('sent_at', null),
+      // Pending AI drafts for this user (mirrors drafts page logic)
+      userId
+        ? (supabase.from('message_drafts') as any)
+            .select('*, shipment_cases!inner(operator_id)', { count: 'exact', head: true })
+            .eq('shipment_cases.operator_id', userId)
+            .not('draft_task_id', 'is', null)
+            .is('approved_at', null).is('rejected_at', null).is('sent_at', null)
+        : Promise.resolve({ count: 0 }),
       // Unmatched: inbox emails with no case linked
       mbFilter(supabase.from('email_messages')
         .select('*', { count: 'exact', head: true })
@@ -200,7 +208,7 @@ function FolderRailInner() {
       fromClients: clientRes.count    ?? 0,
       fromVendors: vendorRes.count    ?? 0,
     })
-  }, [mailboxId])
+  }, [mailboxId, userId])
 
   useEffect(() => {
     fetchCounts()
@@ -277,7 +285,7 @@ function FolderRailInner() {
         </Group>
 
         {/* ── Account ── */}
-        <Group label="freightmate58@gmail.com" open={acctOpen} onToggle={() => setAcctOpen(o => !o)}>
+        <Group label={user?.email ?? '…'} open={acctOpen} onToggle={() => setAcctOpen(o => !o)}>
           <RailLink href="/inbox"   icon={Inbox}        label="Inbox"      count={counts.inbox}  onCtxMenu={openCtx} />
           <RailLink href="/drafts"  icon={FileText}     label="Drafts"     count={counts.drafts} onCtxMenu={openCtx} />
           <RailLink href="/sent"    icon={Send}         label="Sent Items"                       onCtxMenu={openCtx} />
