@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useUser } from '@/components/UserProvider'
 import {
   Package, Clock, AlertTriangle, MessageCircleOff, Plane, TrendingUp,
   Mail, Zap, Filter, X, ArrowRight, AlertCircle, Inbox,
@@ -452,25 +453,18 @@ function priorityBadge(p: string) {
 
 export default function DashboardPage() {
   const router  = useRouter()
-  const [userProfile, setUserProfile] = useState<{ id: string; role: string; mailboxId: string | null } | null | undefined>(undefined)
+  const { user, role, mailboxId, loaded } = useUser()
+  const userProfile = loaded ? (user?.id ? { id: user.id, role, mailboxId: mailboxId ?? null } : null) : undefined
   const [cases,   setCases]   = useState<ShipmentCase[]>([])
   const [emails,  setEmails]  = useState<EmailMessage[]>([])
   const [drafts,        setDrafts]        = useState<DraftWithCase[]>([])
   const [loading,       setLoading]       = useState(true)
   const [crmReviewCount, setCrmReviewCount] = useState(0)
 
-  // Resolve current user role; redirect managers to their own dashboard
+  // Redirect managers to their own dashboard
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
-      const [{ data: profile }, { data: appUser }] = await Promise.all([
-        supabase.from('profiles').select('id, role').eq('id', user.id).single(),
-        supabase.from('app_users').select('mailbox_id').eq('id', user.id).single(),
-      ])
-      if (profile?.role === 'manager') { router.replace('/operations'); return }
-      setUserProfile({ id: user.id, role: profile?.role ?? 'operator', mailboxId: appUser?.mailbox_id ?? null })
-    })
-  }, [router])
+    if (loaded && role === 'manager') router.replace('/operations')
+  }, [loaded, role, router])
 
   useEffect(() => {
     if (userProfile === undefined) return

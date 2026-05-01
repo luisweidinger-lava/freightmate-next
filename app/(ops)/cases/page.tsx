@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useUser } from '@/components/UserProvider'
 import {
   Package, Search, X, ChevronDown, Filter, ArrowRight, MessageCircleOff,
   AlertTriangle, Printer, MoreHorizontal, Briefcase,
@@ -435,21 +436,13 @@ function CasesTable({ cases, sort, setSort, loading }: {
 
 function CasesPageInner() {
   const params = useSearchParams()
-  const [userProfile, setUserProfile] = useState<{ id: string; role: string } | null | undefined>(undefined)
+  const { user, role, loaded } = useUser()
+  const userProfile = loaded ? (user?.id ? { id: user.id, role } : null) : undefined
   const [allCases, setAllCases] = useState<ShipmentCase[]>([])
   const [loading,  setLoading]  = useState(true)
   const [search,   setSearch]   = useState('')
   const [filters,  setFilters]  = useState<Filters>({ status: [], urgency: [], flags: [], period: null })
   const [sort,     setSort]     = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'flight_date', dir: 'asc' })
-
-  // Resolve current user role
-  useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) { setUserProfile(null); return }
-      const { data: profile } = await supabase.from('profiles').select('id, role').eq('id', user.id).single()
-      setUserProfile({ id: user.id, role: profile?.role ?? 'operator' })
-    })
-  }, [])
 
   // Apply URL params from dashboard navigation on mount
   useEffect(() => {

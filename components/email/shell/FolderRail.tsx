@@ -134,9 +134,8 @@ function Group({ label, open, onToggle, children }: {
 // ── FolderRail ───────────────────────────────────────────────────────────────
 
 function FolderRailInner() {
-  const { user } = useUser()
-  const [mailboxId, setMailboxId] = useState<string | null | undefined>(undefined)
-  const [userId,    setUserId]    = useState<string | null | undefined>(undefined)
+  const { user, mailboxId } = useUser()
+  const userId = user?.id ?? undefined
   const [counts,   setCounts]   = useState<Counts>({ inbox: 0, drafts: 0, urgent: 0, unmatched: 0, fromClients: 0, fromVendors: 0 })
   const [favOpen,  setFavOpen]  = useState(true)
   const [acctOpen, setAcctOpen] = useState(true)
@@ -145,15 +144,6 @@ function FolderRailInner() {
   const [favs,     setFavs]     = useState<string[]>([])
   const [ctx,      setCtx]      = useState<CtxMenu | null>(null)
   const ctxRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { setMailboxId(null); setUserId(null); return }
-      setUserId(user.id)
-      supabase.from('app_users').select('mailbox_id').eq('id', user.id).single()
-        .then(({ data }) => setMailboxId(data?.mailbox_id ?? null))
-    })
-  }, [])
 
   // Load favourites from localStorage on mount
   useEffect(() => { setFavs(loadFavs()) }, [])
@@ -170,7 +160,7 @@ function FolderRailInner() {
 
   // Supabase realtime counts
   const fetchCounts = useCallback(async () => {
-    if (mailboxId === undefined || userId === undefined) return
+    if (mailboxId === undefined || mailboxId === null || userId === undefined || userId === null) return
     const mbFilter = (q: any) => mailboxId ? q.eq('mailbox_id', mailboxId) : q
     const [unreadRes, draftsRes, unmatchedRes, clientRes, vendorRes] = await Promise.all([
       // Unread inbox

@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import EmailList from '@/components/email/EmailList'
 import EmailDetail from '@/components/email/EmailDetail'
 import { Mail } from 'lucide-react'
+import { useUser } from '@/components/UserProvider'
 
 // ── Nylas move helper ─────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ function InboxContent() {
   const filterParam = searchParams.get('filter')
   const idParam = searchParams.get('id')
 
-  const [mailboxId, setMailboxId] = useState<string | null | undefined>(undefined)
+  const { mailboxId } = useUser()
   const [emails, setEmails] = useState<EmailMessage[]>([])
   const [selected, setSelected] = useState<EmailMessage | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -48,14 +49,6 @@ function InboxContent() {
   const [listWidth, setListWidth] = useState(360)
   useEffect(() => {
     try { const s = Number(localStorage.getItem(LIST_WIDTH_KEY)); if (s) setListWidth(s) } catch { /* ignore */ }
-  }, [])
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) { setMailboxId(null); return }
-      supabase.from('app_users').select('mailbox_id').eq('id', user.id).single()
-        .then(({ data }) => setMailboxId(data?.mailbox_id ?? null))
-    })
   }, [])
 
   // Keep ref in sync so load() can check selection without it as a dep

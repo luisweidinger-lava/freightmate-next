@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useUser } from '@/components/UserProvider'
 import { MessageDraft, ShipmentCase } from '@/lib/types'
 import { formatDate, formatRef } from '@/lib/utils'
 import {
@@ -341,7 +342,8 @@ export default function DraftsPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
   const [listWidth, setListWidth] = useState(320)
-  const [userId, setUserId] = useState<string | null>(null)
+  const { user: currentUser } = useUser()
+  const userId = currentUser?.id ?? null
   const { open } = useCompose()
 
   function startDrag(e: React.MouseEvent) {
@@ -374,10 +376,6 @@ export default function DraftsPage() {
     setCases(casesRes.data as ShipmentCase[] || [])
     setLoading(false)
   }, [userId])
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null))
-  }, [])
 
   useEffect(() => { load() }, [load, userId])
 
