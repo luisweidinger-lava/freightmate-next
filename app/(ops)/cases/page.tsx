@@ -12,12 +12,18 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useUser } from '@/components/UserProvider'
 import {
   Package, Search, X, ChevronDown, Filter, ArrowRight, MessageCircleOff,
-  AlertTriangle, Printer, MoreHorizontal, Briefcase,
+  AlertTriangle, Printer, MoreHorizontal, Briefcase, ShieldAlert, UserPlus, Info,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/routes'
 import { formatDateShort, formatRelTime, isSameDay } from '@/lib/utils'
-import type { ShipmentCase, CaseStatus } from '@/lib/types'
+import type { ShipmentCase, CaseStatus, CaseAccessGrant } from '@/lib/types'
+import { AccessRequestModal } from '@/components/cases/AccessRequestModal'
+import { ShareCaseModal }     from '@/components/cases/ShareCaseModal'
+
+type CaseWithProfile = ShipmentCase & {
+  profiles: { display_name: string | null; id: string } | null
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -334,13 +340,29 @@ function SortTh({ col, label, sort, setSort, style }: {
 
 // ── Cases Table ───────────────────────────────────────────────────────────────
 
-function CasesTable({ cases, sort, setSort, loading }: {
-  cases: ShipmentCase[]
+function CasesTable({ cases, sort, setSort, loading, role, userId, grants, onRequestAccess, onShare }: {
+  cases: CaseWithProfile[]
   sort: { key: string; dir: 'asc' | 'desc' }
   setSort: React.Dispatch<React.SetStateAction<{ key: string; dir: 'asc' | 'desc' }>>
   loading: boolean
+  role: string
+  userId: string | null
+  grants: Map<string, CaseAccessGrant>
+  onRequestAccess: (caseId: string) => void
+  onShare: (caseId: string, caseRef: string | null) => void
 }) {
   const router = useRouter()
+
+  function canOpenDirectly(c: CaseWithProfile) {
+    return c.operator_id === userId || c.operator_id === null
+  }
+
+  function handleRowClick(c: CaseWithProfile) {
+    if (canOpenDirectly(c)) { router.push(ROUTES.CASE(c.ref_number ?? c.id)); return }
+    const grant = grants.get(c.id)
+    if (grant?.status === 'granted') router.push(ROUTES.CASE(c.ref_number ?? c.id))
+  }
+
   return (
     <div className="es-card cases-table-wrap">
       <div style={{ overflowX: 'auto' }}>
@@ -350,34 +372,38 @@ function CasesTable({ cases, sort, setSort, loading }: {
               <SortTh col="ref_number"  label="Ref"          sort={sort} setSort={setSort} style={{ width: 90 }} />
               <SortTh col="client_name" label="Client"       sort={sort} setSort={setSort} />
               <th className="th-nosort">Route</th>
+              <th className="th-nosort" style={{ width: 110 }}>Assigned To</th>
               <SortTh col="status"      label="Status"       sort={sort} setSort={setSort} style={{ width: 124 }} />
               <th className="th-nosort" style={{ width: 82 }}>Priority</th>
               <SortTh col="flight_date" label="Flight Date"  sort={sort} setSort={setSort} style={{ width: 100 }} />
               <SortTh col="created_at"  label="Created"      sort={sort} setSort={setSort} style={{ width: 82 }} />
               <SortTh col="updated_at"  label="Last Contact" sort={sort} setSort={setSort} style={{ width: 108 }} />
-              <th className="th-nosort" style={{ width: 90 }}></th>
+              <th className="th-nosort" style={{ width: 120 }}></th>
             </tr>
           </thead>
           <tbody>
             {loading
               ? Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i}>{[80,140,130,110,70,90,70,90,80].map((w, j) => (
+                  <tr key={i}>{[80,140,130,110,110,70,90,70,90,120].map((w, j) => (
                     <td key={j} style={{ padding: '9px 12px' }}>
-                      <div className="es-skeleton" style={{ height: 11, width: w * (0.4 + Math.random() * 0.6) }} />
+                      <div className="es-skeleton" style={{ height: 11, width: w * (0.5 + (i * 3 + j * 7) % 10 * 0.05) }} />
                     </td>
                   ))}</tr>
                 ))
               : cases.length === 0
-                ? <tr><td colSpan={9} className="empty-row">No cases match the current filters</td></tr>
+                ? <tr><td colSpan={10} className="empty-row">No cases match the current filters</td></tr>
                 : cases.map(c => {
                     const delayed  = isDelayed(c)
                     const critical = isCritical(c)
                     const silent   = isGoneSilent(c)
+                    const grant    = grants.get(c.id)
+                    const ownCase  = canOpenDirectly(c)
+                    const clickable = ownCase || grant?.status === 'granted'
                     return (
                       <tr key={c.id}
                         className={critical ? 'row--critical' : delayed ? 'row--delayed' : ''}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => router.push(ROUTES.CASE(c.ref_number ?? c.id))}>
+                        style={{ cursor: clickable ? 'pointer' : 'default' }}
+                        onClick={() => handleRowClick(c)}>
                         <td>
                           <span className="cell-ref">{c.ref_number ?? c.case_code}</span>
                           {critical && <AlertTriangle size={11} strokeWidth={1.5} style={{ color: 'var(--es-urgent)', marginLeft: 4, verticalAlign: 'middle' }} />}
@@ -392,6 +418,9 @@ function CasesTable({ cases, sort, setSort, loading }: {
                             <ArrowRight size={11} strokeWidth={1.5} style={{ color: 'var(--es-n-300)', flexShrink: 0 }} />
                             <span>{c.destination ?? '—'}</span>
                           </div>
+                        </td>
+                        <td>
+                          <span className="cell-assignee">{c.profiles?.display_name ?? '—'}</span>
                         </td>
                         <td><span className={`es-badge es-badge--${statusVariant(c.status)}`}>{statusLabel(c.status)}</span></td>
                         <td>{urgencyBadge(c.priority)}</td>
@@ -409,12 +438,57 @@ function CasesTable({ cases, sort, setSort, loading }: {
                           </span>
                         </td>
                         <td style={{ textAlign: 'right', paddingRight: 10 }}>
-                          <button className="open-wb-btn"
-                            onClick={() => router.push(ROUTES.CASE(c.ref_number ?? c.id))}
-                            title="Open in Workbench">
-                            <Briefcase size={12} strokeWidth={1.5} />
-                            Open
-                          </button>
+                          <div className="action-cell">
+                            {ownCase ? (
+                              <>
+                                <button
+                                  className="open-wb-btn open-wb-btn--visible"
+                                  onClick={e => { e.stopPropagation(); router.push(ROUTES.CASE(c.ref_number ?? c.id)) }}
+                                  title="Open in Workbench">
+                                  <Briefcase size={12} strokeWidth={1.5} />
+                                  Open
+                                </button>
+                                <button
+                                  className="share-case-btn"
+                                  onClick={e => { e.stopPropagation(); onShare(c.id, c.ref_number) }}
+                                  title="Share this case">
+                                  <UserPlus size={12} strokeWidth={1.5} />
+                                  Share
+                                </button>
+                              </>
+                            ) : role !== 'operator' ? (
+                              grant?.status === 'granted' ? (
+                                <button
+                                  className="open-wb-btn open-wb-btn--visible open-wb-btn--access"
+                                  onClick={e => { e.stopPropagation(); router.push(ROUTES.CASE(c.ref_number ?? c.id)) }}
+                                  title="Open with read-only access">
+                                  <Briefcase size={12} strokeWidth={1.5} />
+                                  Access
+                                </button>
+                              ) : grant?.status === 'pending' ? (
+                                <button className="open-wb-btn" disabled title="Request pending">
+                                  Pending…
+                                </button>
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <button
+                                    className="request-access-btn"
+                                    onClick={e => { e.stopPropagation(); onRequestAccess(c.id) }}
+                                    title="Request read-only access">
+                                    <ShieldAlert size={12} strokeWidth={1.5} />
+                                    Request Access
+                                  </button>
+                                  {grant?.status === 'revoked' && (grant as any).notes && (
+                                    <span
+                                      title={`Declined: ${(grant as any).notes}`}
+                                      style={{ cursor: 'help', color: 'var(--es-n-300)' }}>
+                                      <Info size={12} strokeWidth={1.5} />
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -437,12 +511,18 @@ function CasesTable({ cases, sort, setSort, loading }: {
 function CasesPageInner() {
   const params = useSearchParams()
   const { user, role, loaded } = useUser()
-  const userProfile = loaded ? (user?.id ? { id: user.id, role } : null) : undefined
-  const [allCases, setAllCases] = useState<ShipmentCase[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [search,   setSearch]   = useState('')
-  const [filters,  setFilters]  = useState<Filters>({ status: [], urgency: [], flags: [], period: null })
-  const [sort,     setSort]     = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'flight_date', dir: 'asc' })
+  const userProfile = useMemo(
+    () => loaded ? (user?.id ? { id: user.id, role } : null) : undefined,
+    [loaded, user?.id, role],
+  )
+  const [allCases,        setAllCases]       = useState<CaseWithProfile[]>([])
+  const [loading,         setLoading]        = useState(true)
+  const [search,          setSearch]         = useState('')
+  const [filters,         setFilters]        = useState<Filters>({ status: [], urgency: [], flags: [], period: null })
+  const [sort,            setSort]           = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'flight_date', dir: 'asc' })
+  const [grants,        setGrants]       = useState<Map<string, CaseAccessGrant>>(new Map())
+  const [pendingNotif,  setPendingNotif] = useState<{ grant: CaseAccessGrant; managerName: string; caseRef: string } | null>(null)
+  const [shareModalCase,  setShareModalCase] = useState<{ id: string; ref: string | null } | null>(null)
 
   // Apply URL params from dashboard navigation on mount
   useEffect(() => {
@@ -467,16 +547,28 @@ function CasesPageInner() {
     if (userProfile === undefined) return
     let mounted = true
     const opFilter = (q: any) => (userProfile && userProfile.role !== 'manager') ? q.eq('operator_id', userProfile.id) : q
-    opFilter(supabase.from('shipment_cases').select('*')).order('updated_at', { ascending: false })
-      .then(({ data }: { data: ShipmentCase[] | null }) => { if (mounted) { setAllCases(data ?? []); setLoading(false) } })
+    opFilter(supabase.from('shipment_cases').select('*, profiles!operator_id(display_name, id)')).order('updated_at', { ascending: false })
+      .then(({ data }: { data: CaseWithProfile[] | null }) => { if (mounted) { setAllCases(data ?? []); setLoading(false) } })
     return () => { mounted = false }
   }, [userProfile])
 
   const refreshCases = useCallback(async () => {
     if (userProfile === undefined) return
     const opFilter = (q: any) => (userProfile && userProfile.role !== 'manager') ? q.eq('operator_id', userProfile.id) : q
-    const { data } = await opFilter(supabase.from('shipment_cases').select('*')).order('updated_at', { ascending: false })
-    if (data) setAllCases(data)
+    const { data } = await opFilter(supabase.from('shipment_cases').select('*, profiles!operator_id(display_name, id)')).order('updated_at', { ascending: false })
+    if (data) setAllCases(data as CaseWithProfile[])
+  }, [userProfile])
+
+  // Fetch access grants after user is known
+  useEffect(() => {
+    if (!userProfile) return
+    if (userProfile.role === 'manager') {
+      // Fetch all statuses (including revoked) so decline notes can be displayed
+      supabase.from('case_access_grants').select('*').eq('manager_id', userProfile.id)
+        .then(({ data }) => {
+          if (data) setGrants(new Map(data.map(g => [g.case_id, g])))
+        })
+    }
   }, [userProfile])
 
   useEffect(() => {
@@ -485,6 +577,72 @@ function CasesPageInner() {
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [refreshCases])
+
+  // Real-time: manager — watch own grant status changes
+  useEffect(() => {
+    if (!userProfile || userProfile.role !== 'manager') return
+    const ch = supabase.channel('access-grants-manager')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'case_access_grants' }, async () => {
+        const { data } = await supabase.from('case_access_grants').select('*')
+          .eq('manager_id', userProfile.id).in('status', ['pending', 'granted'])
+        if (data) setGrants(new Map(data.map(g => [g.case_id, g])))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [userProfile])
+
+  // Real-time: operator — watch for new access requests
+  useEffect(() => {
+    if (!userProfile || userProfile.role === 'manager') return
+    const ch = supabase.channel('access-grants-operator')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'case_access_grants' }, async (payload) => {
+        const newGrant = payload.new as CaseAccessGrant
+        if (!newGrant || newGrant.operator_id !== userProfile.id || newGrant.status !== 'pending') return
+        // Fetch manager name for the notification
+        const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', newGrant.manager_id).maybeSingle()
+        const caseRow = allCases.find(c => c.id === newGrant.case_id)
+        setPendingNotif({
+          grant: newGrant,
+          managerName: profile?.display_name ?? 'Manager',
+          caseRef: caseRow?.ref_number ?? newGrant.case_id.slice(0, 8),
+        })
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile])
+
+  async function handleRequestAccess(caseId: string) {
+    const res = await fetch('/api/case-access/request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ case_id: caseId }),
+    })
+    if (res.ok) {
+      const { grant_id } = await res.json()
+      setGrants(prev => new Map(prev).set(caseId, {
+        id: grant_id, case_id: caseId, manager_id: userProfile!.id,
+        operator_id: '', status: 'pending', requested_at: new Date().toISOString(), resolved_at: null,
+      }))
+    }
+  }
+
+  async function handleGrantAccess(note?: string) {
+    if (!pendingNotif) return
+    await fetch('/api/case-access/grant', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_id: pendingNotif.grant.id, note }),
+    })
+    setPendingNotif(null)
+  }
+
+  async function handleRejectAccess(note?: string) {
+    if (!pendingNotif) return
+    await fetch('/api/case-access/revoke', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_id: pendingNotif.grant.id, note }),
+    })
+    setPendingNotif(null)
+  }
 
   const filteredCases = useMemo(() => {
     let r = allCases
@@ -534,6 +692,24 @@ function CasesPageInner() {
 
   return (
     <>
+      {pendingNotif && (
+        <AccessRequestModal
+          grant={pendingNotif.grant}
+          managerName={pendingNotif.managerName}
+          caseRef={pendingNotif.caseRef}
+          onGrant={handleGrantAccess}
+          onReject={handleRejectAccess}
+          onDismiss={() => setPendingNotif(null)}
+        />
+      )}
+      {shareModalCase && (
+        <ShareCaseModal
+          caseId={shareModalCase.id}
+          caseRef={shareModalCase.ref}
+          onClose={() => setShareModalCase(null)}
+          onChanged={refreshCases}
+        />
+      )}
       <CasesRibbon
         filters={filters} setFilters={setFilters}
         sort={sort} setSort={setSort}
@@ -543,7 +719,16 @@ function CasesPageInner() {
       <main className="cases-main">
         <SummaryBar all={allCases} filteredCount={filteredCases.length} />
         <ActiveFilters filters={filters} search={search} setFilters={setFilters} setSearch={setSearch} />
-        <CasesTable cases={filteredCases} sort={sort} setSort={setSort} loading={loading} />
+        <CasesTable
+          cases={filteredCases}
+          sort={sort} setSort={setSort}
+          loading={loading}
+          role={role}
+          userId={user?.id ?? null}
+          grants={grants}
+          onRequestAccess={handleRequestAccess}
+          onShare={(id, ref) => setShareModalCase({ id, ref })}
+        />
       </main>
     </>
   )

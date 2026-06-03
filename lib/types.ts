@@ -242,6 +242,16 @@ export interface Profile {
   created_at:   string
 }
 
+export interface CaseAccessGrant {
+  id:           string
+  case_id:      string
+  manager_id:   string
+  operator_id:  string
+  status:       'pending' | 'granted' | 'revoked'
+  requested_at: string
+  resolved_at:  string | null
+}
+
 export interface Mailbox {
   id:             string
   org_id:         string | null

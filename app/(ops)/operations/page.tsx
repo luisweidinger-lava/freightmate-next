@@ -689,14 +689,14 @@ function CasesTable({ cases, vendors, profiles, loading }: {
                     return (
                       <tr key={c.id}>
                         <td><span className="cell-ref">{c.ref_number ?? c.case_code}</span></td>
-                        <td>
-                          <div className="cell-route">
-                            <span>{c.origin ?? '—'}</span>
+                        <td style={{ overflow: 'hidden' }}>
+                          <div className="cell-route" style={{ overflow: 'hidden', minWidth: 0 }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{c.origin ?? '—'}</span>
                             <ArrowRight size={10} strokeWidth={1.5} style={{ color: 'var(--es-n-300)', flexShrink: 0 }} />
-                            <span>{c.destination ?? '—'}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1 }}>{c.destination ?? '—'}</span>
                           </div>
                         </td>
-                        <td>
+                        <td style={{ overflow: 'hidden' }}>
                           <div style={{ fontSize: 12, color: 'var(--es-n-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {c.item_desc ?? '—'}
                           </div>
@@ -1008,6 +1008,8 @@ export default function OperationsPage() {
   const [profiles,     setProfiles]     = useState<Profile[]>([])
   const [vendors,      setVendors]      = useState<Vendor[]>([])
   const [orgOperators, setOrgOperators] = useState<OrgOperator[]>([])
+  const [cases,        setCases]        = useState<ShipmentCase[]>([])
+  const [emails,       setEmails]       = useState<SlimEmail[]>([])
   const [loading,      setLoading]      = useState(true)
 
   useEffect(() => {
@@ -1018,17 +1020,26 @@ export default function OperationsPage() {
         { data: profilesData },
         { data: vendorsData },
         { data: orgOpsData },
+        { data: casesData },
+        { data: emailsData },
       ] = await Promise.all([
         supabase.rpc('get_team_kpis'),
         supabase.from('profiles').select('*'),
         supabase.from('vendors').select('*'),
         supabase.rpc('get_org_operators'),
+        supabase.from('shipment_cases').select('*').order('updated_at', { ascending: false }),
+        supabase.from('email_messages')
+          .select('id, case_id, direction, created_at, message_type')
+          .order('created_at', { ascending: false })
+          .limit(500),
       ])
       if (!alive) return
       setTeamKpis((teamKpisData as TeamKpi[]) ?? [])
       setProfiles(profilesData ?? [])
       setVendors(vendorsData ?? [])
       setOrgOperators((orgOpsData as OrgOperator[]) ?? [])
+      setCases((casesData as ShipmentCase[]) ?? [])
+      setEmails((emailsData as SlimEmail[]) ?? [])
       setLoading(false)
 
       // Heartbeat — stamp presence so the online indicator reflects active managers
@@ -1068,16 +1079,16 @@ export default function OperationsPage() {
     <main className="dashboard-main">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 10, alignItems: 'stretch' }}>
         <KpiBar teamKpis={teamKpis} />
-        <PipelineFunnel cases={[]} compact />
+        <PipelineFunnel cases={cases} compact />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'stretch' }}>
-        <AlertsPanel cases={[]} emails={[]} loading={loading} />
+        <AlertsPanel cases={cases} emails={emails} loading={loading} />
         <OperatorTable kpis={teamKpis} orgOperators={orgOperators} loading={loading} onAdd={handleAddOperator} onRemove={handleRemoveOperator} />
       </div>
-      <GanttCard cases={[]} profiles={profiles} loading={loading} />
-      <KanbanBoard cases={[]} profiles={profiles} loading={loading} />
-      <CasesTable cases={[]} vendors={vendors} profiles={profiles} loading={loading} />
-      <VolumeTrend allCases={[]} profiles={profiles} selected="all" />
+      <GanttCard cases={cases} profiles={profiles} loading={loading} />
+      <KanbanBoard cases={cases} profiles={profiles} loading={loading} />
+      <CasesTable cases={cases} vendors={vendors} profiles={profiles} loading={loading} />
+      <VolumeTrend allCases={cases} profiles={profiles} selected="all" />
     </main>
   )
 }

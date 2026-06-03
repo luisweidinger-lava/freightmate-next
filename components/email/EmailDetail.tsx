@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Send, ChevronDown, ChevronRight, Trash2,
   ReplyAll, Forward, Star, AlertOctagon,
   AlertTriangle, Link2, Plus, X, Lightbulb,
+  Unlink,
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -341,6 +342,12 @@ export default function EmailDetail({ email, onClose, onAction }: EmailDetailPro
   const [compose, setCompose] = useState<{ mode: 'reply' | 'replyAll' | 'forward' } | null>(null)
   const [caseInfo, setCaseInfo] = useState<ShipmentCase | null>(null)
   const [summary, setSummary] = useState<ThreadSummaryStrip | null>(null)
+  const [relinkOpen,    setRelinkOpen]    = useState(false)
+  const [relinkSearch,  setRelinkSearch]  = useState('')
+  const [allCases,      setAllCases]      = useState<ShipmentCase[]>([])
+  const [casesLoading,  setCasesLoading]  = useState(false)
+  const [relinkLoading, setRelinkLoading] = useState(false)
+  const relinkPopupRef                    = useRef<HTMLDivElement>(null)
 
   // Load thread
   useEffect(() => {
@@ -370,6 +377,67 @@ export default function EmailDetail({ email, onClose, onAction }: EmailDetailPro
 
   useEffect(() => { loadCaseData() }, [loadCaseData])
 
+  useEffect(() => {
+    function onOutside(e: MouseEvent) {
+      if (relinkPopupRef.current && !relinkPopupRef.current.contains(e.target as Node))
+        setRelinkOpen(false)
+    }
+    if (relinkOpen) document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [relinkOpen])
+
+  async function loadCases() {
+    setCasesLoading(true)
+    const { data } = await supabase
+      .from('shipment_cases')
+      .select('id, ref_number, case_code')
+      .order('ref_number', { ascending: true })
+    setAllCases((data || []) as ShipmentCase[])
+    setCasesLoading(false)
+  }
+
+  async function handleRelinkToCase(targetCase: ShipmentCase) {
+    if (targetCase.id === email.case_id) return
+    setRelinkLoading(true)
+    const res = await fetch('/api/relink-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        emailId: email.id,
+        newCaseId: targetCase.id,
+        oldChannelId: (email as any).channel_id ?? null,
+        senderEmail: email.sender_email ?? '',
+        nylasThreadId: email.nylas_thread_id ?? null,
+      }),
+    })
+    const json = await res.json()
+    setRelinkLoading(false)
+    if (!res.ok) { toast.error(json.error || 'Could not re-link email'); return }
+    toast.success(`Re-linked to #${targetCase.ref_number || targetCase.case_code}`)
+    setRelinkOpen(false)
+    setRelinkSearch('')
+    const { data } = await supabase.from('shipment_cases').select('*').eq('id', targetCase.id).maybeSingle()
+    setCaseInfo((data as ShipmentCase | null) || null)
+    onAction()
+  }
+
+  async function handleUnlink() {
+    setRelinkOpen(false)
+    const res = await fetch('/api/unlink-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId: email.id }),
+    })
+    if (!res.ok) {
+      const json = await res.json()
+      toast.error(json.error || 'Could not remove case link')
+      return
+    }
+    toast.success('Case link removed')
+    setCaseInfo(null)
+    onAction()
+  }
+
   async function toggleStar() {
     await supabase.from('email_messages').update({ is_starred: !email.is_starred }).eq('id', email.id)
     onAction()
@@ -390,6 +458,9 @@ export default function EmailDetail({ email, onClose, onAction }: EmailDetailPro
   const displayThread = thread.length > 1 ? thread : null
   const latestMsg = displayThread ? displayThread[displayThread.length - 1] : email
   const replySubject = email.subject?.startsWith('RE:') ? email.subject : `RE: ${email.subject || ''}`
+  const filteredCases = allCases.filter(c =>
+    (c.ref_number || c.case_code || '').toLowerCase().includes(relinkSearch.toLowerCase())
+  )
 
   return (
     <div className="es-detail">
@@ -457,9 +528,62 @@ export default function EmailDetail({ email, onClose, onAction }: EmailDetailPro
           )}
           <span className={`es-pill ${statusPillClass(caseInfo.status)}`}>{statusLabel(caseInfo.status)}</span>
           {(caseInfo as any).priority === 'urgent' && <span className="es-pill urgent">Urgent</span>}
-          <Link href={`/cases/${caseInfo.ref_number || caseInfo.id}`} className="es-open-wb">
-            Open in Workbench <ChevronRight size={11} />
-          </Link>
+          <div className="es-wb-action-group">
+            <div className="es-relink-anchor" ref={relinkPopupRef}>
+              <button
+                className="es-open-wb"
+                style={{ marginLeft: 0 }}
+                disabled={relinkLoading}
+                onClick={() => {
+                  if (!relinkOpen) { setRelinkSearch(''); loadCases() }
+                  setRelinkOpen(v => !v)
+                }}
+              >
+                Re-link
+              </button>
+              {relinkOpen && (
+                <div className="es-relink-popup">
+                  <div className="es-relink-search-wrap">
+                    <input
+                      autoFocus
+                      className="es-relink-search-input"
+                      placeholder="Filter by ref number…"
+                      value={relinkSearch}
+                      onChange={e => setRelinkSearch(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Escape') setRelinkOpen(false) }}
+                    />
+                  </div>
+                  <div className="es-relink-list">
+                    {casesLoading ? (
+                      <div className="es-relink-empty">Loading…</div>
+                    ) : filteredCases.length === 0 ? (
+                      <div className="es-relink-empty">No cases found</div>
+                    ) : filteredCases.map(c => (
+                      <button
+                        key={c.id}
+                        className={`es-relink-item${c.id === email.case_id ? ' current' : ''}`}
+                        disabled={c.id === email.case_id || relinkLoading}
+                        onClick={() => handleRelinkToCase(c)}
+                      >
+                        #{c.ref_number || c.case_code}
+                        {c.id === email.case_id && (
+                          <span className="es-relink-current-badge">current</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="es-relink-footer">
+                    <button className="es-relink-remove-btn" onClick={handleUnlink} disabled={relinkLoading}>
+                      <Unlink size={12} strokeWidth={1.5} /> Remove case link
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <Link href={`/cases/${caseInfo.ref_number || caseInfo.id}`} className="es-open-wb" style={{ marginLeft: 0 }}>
+              Open in Workbench <ChevronRight size={11} />
+            </Link>
+          </div>
         </div>
       )}
 

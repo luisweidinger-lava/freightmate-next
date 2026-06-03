@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Send, Edit3, RotateCcw, X, Sparkles } from 'lucide-react'
+import { Send, Edit3, RotateCcw, X, Sparkles, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { CaseChannel, EmailMessage, MessageDraft } from '@/lib/types'
+import { CaseChannel, CaseAccessGrant, EmailMessage, MessageDraft } from '@/lib/types'
 import { toast } from 'sonner'
 import ThreadView from '@/components/email/ThreadView'
 import { ThreadActionsBar } from '@/components/workbench/ThreadActionsBar'
@@ -75,9 +75,12 @@ interface Props {
   onAction: () => void
   onChannelCreated?: () => void
   style?: React.CSSProperties
+  readOnly?: boolean
+  operatorGrant?: (CaseAccessGrant & { profiles?: { display_name: string | null } }) | null
+  onRevokeAccess?: () => void
 }
 
-export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef, onAction, onChannelCreated, style }: Props) {
+export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef, onAction, onChannelCreated, style, readOnly, operatorGrant, onRevokeAccess }: Props) {
   const virtual      = channel.id.startsWith('__virtual_')
   const lastMsg      = messages.at(-1)
   const defaultSubj  = lastMsg?.subject
@@ -124,16 +127,16 @@ export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef,
         </span>
       </div>
 
-      {/* Unfoldable actions bar */}
-      <ThreadActionsBar lastMsg={lastMsg} />
+      {/* Unfoldable actions bar — hidden in read-only mode */}
+      {!readOnly && <ThreadActionsBar lastMsg={lastMsg} />}
 
       {/* Thread messages — same component as inbox */}
       <ThreadView
         messages={messages}
       />
 
-      {/* AI Draft cards */}
-      {drafts.length > 0 && (
+      {/* AI Draft cards — hidden in read-only mode */}
+      {!readOnly && drafts.length > 0 && (
         <div className="wb-drafts-container">
           {drafts.map(d => (
             <DraftCard
@@ -147,17 +150,32 @@ export function WorkbenchThreadCol({ channel, messages, drafts, caseId, caseRef,
         </div>
       )}
 
-      {/* Always-open compose area */}
-      <InlineCompose
-        channelType={channel.channel_type}
-        caseId={caseId}
-        channelId={virtual ? null : channel.id}
-        defaultTo={channel.party_email}
-        defaultSubject={defaultSubj}
-        replyToNylasMessageId={lastMsg?.nylas_message_id ?? null}
-        onSent={onAction}
-        onChannelCreated={virtual ? onChannelCreated : undefined}
-      />
+      {/* Operator: manager has read access — show revoke banner */}
+      {operatorGrant && (
+        <div className="wb-manager-access-banner">
+          <ShieldCheck size={13} strokeWidth={1.5} />
+          <span>
+            Manager <strong>{operatorGrant.profiles?.display_name ?? 'Unknown'}</strong> has read-only access
+          </span>
+          <button className="withdraw-access-btn withdraw-access-btn--sm" onClick={onRevokeAccess}>
+            Withdraw Access
+          </button>
+        </div>
+      )}
+
+      {/* Compose area — hidden in read-only mode */}
+      {!readOnly && (
+        <InlineCompose
+          channelType={channel.channel_type}
+          caseId={caseId}
+          channelId={virtual ? null : channel.id}
+          defaultTo={channel.party_email}
+          defaultSubject={defaultSubj}
+          replyToNylasMessageId={lastMsg?.nylas_message_id ?? null}
+          onSent={onAction}
+          onChannelCreated={virtual ? onChannelCreated : undefined}
+        />
+      )}
     </div>
   )
 }

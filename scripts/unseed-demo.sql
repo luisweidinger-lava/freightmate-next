@@ -23,8 +23,9 @@ BEGIN
   RAISE NOTICE 'Removing demo cases: %', demo_ids;
 
   -- ── Case children (dependency order) ───────────────────────
-  DELETE FROM message_drafts   WHERE case_id = ANY(demo_ids);
-  DELETE FROM draft_tasks      WHERE case_id = ANY(demo_ids);
+  DELETE FROM case_access_grants WHERE case_id = ANY(demo_ids);
+  DELETE FROM message_drafts      WHERE case_id = ANY(demo_ids);
+  DELETE FROM draft_tasks         WHERE case_id = ANY(demo_ids);
   DELETE FROM thread_summaries WHERE case_id = ANY(demo_ids);
   DELETE FROM shipment_events  WHERE case_id = ANY(demo_ids);
   DELETE FROM case_contacts    WHERE case_id = ANY(demo_ids);

@@ -18,7 +18,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { ROUTES, DASHBOARD_NAV } from '@/lib/routes'
 import { formatDateShort, formatRelTime, isSameDay } from '@/lib/utils'
-import type { ShipmentCase, EmailMessage, DraftTask } from '@/lib/types'
+import type { ShipmentCase, EmailMessage, DraftTask, CaseAccessGrant } from '@/lib/types'
+import { AccessRequestModal } from '@/components/cases/AccessRequestModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -460,16 +461,12 @@ export default function DashboardPage() {
   const [drafts,        setDrafts]        = useState<DraftWithCase[]>([])
   const [loading,       setLoading]       = useState(true)
   const [crmReviewCount, setCrmReviewCount] = useState(0)
-
-  // Redirect managers to their own dashboard
-  useEffect(() => {
-    if (loaded && role === 'manager') router.replace('/operations')
-  }, [loaded, role, router])
+  const [pendingNotif,  setPendingNotif]  = useState<{ grant: CaseAccessGrant; managerName: string; caseRef: string } | null>(null)
 
   useEffect(() => {
     if (userProfile === undefined) return
     let mounted = true
-    const opFilter = (q: any) => userProfile ? q.eq('operator_id', userProfile.id) : q
+    const opFilter = (q: any) => (userProfile && userProfile.role !== 'manager') ? q.eq('operator_id', userProfile.id) : q
 
     async function load() {
       const [{ data: casesData }, { data: emailsData }, { data: draftsData }, { count: crmCount }] = await Promise.all([
@@ -519,6 +516,44 @@ export default function DashboardPage() {
     return () => { mounted = false; supabase.removeChannel(channel) }
   }, [userProfile])
 
+  // Real-time: operator — watch for new access requests from managers
+  useEffect(() => {
+    if (!userProfile) return
+    const ch = supabase.channel('dashboard-access-grants')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'case_access_grants' }, async (payload) => {
+        const newGrant = payload.new as CaseAccessGrant
+        if (!newGrant || newGrant.operator_id !== userProfile.id || newGrant.status !== 'pending') return
+        const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', newGrant.manager_id).maybeSingle()
+        const caseRow = cases.find(c => c.id === newGrant.case_id)
+        setPendingNotif({
+          grant: newGrant,
+          managerName: profile?.display_name ?? 'Manager',
+          caseRef: caseRow?.ref_number ?? newGrant.case_id.slice(0, 8),
+        })
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile])
+
+  async function handleGrantAccess(note?: string) {
+    if (!pendingNotif) return
+    await fetch('/api/case-access/grant', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_id: pendingNotif.grant.id, note }),
+    })
+    setPendingNotif(null)
+  }
+
+  async function handleRejectAccess(note?: string) {
+    if (!pendingNotif) return
+    await fetch('/api/case-access/revoke', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_id: pendingNotif.grant.id, note }),
+    })
+    setPendingNotif(null)
+  }
+
   const activeCases  = cases.filter(c => !CLOSED.includes(c.status as typeof CLOSED[number]))
   const delayedCount  = activeCases.filter(isDelayed).length
   const criticalCount = activeCases.filter(isCritical).length
@@ -528,6 +563,16 @@ export default function DashboardPage() {
 
   return (
     <>
+      {pendingNotif && (
+        <AccessRequestModal
+          grant={pendingNotif.grant}
+          managerName={pendingNotif.managerName}
+          caseRef={pendingNotif.caseRef}
+          onGrant={handleGrantAccess}
+          onReject={handleRejectAccess}
+          onDismiss={() => setPendingNotif(null)}
+        />
+      )}
       <DashboardRibbon />
       <main className="dashboard-main">
         <FlightAlertBar cases={cases} onViewFlights={goToFlights} />

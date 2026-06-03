@@ -3,13 +3,14 @@
 import React, { useEffect, useRef, useState, use } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, RefreshCw, PanelRightClose, PanelRightOpen, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, PanelRightClose, PanelRightOpen, Plus, Eye, ShieldAlert } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { ShipmentCase, CaseChannel, EmailMessage, MessageDraft, ThreadSummary } from '@/lib/types'
+import { ShipmentCase, CaseChannel, CaseAccessGrant, EmailMessage, MessageDraft, ThreadSummary } from '@/lib/types'
 import { formatRef } from '@/lib/utils'
 import { WorkbenchThreadCol } from '@/components/workbench/WorkbenchThreadCol'
 import { IntelPanel } from '@/components/workbench/IntelPanel'
 import { useUser } from '@/components/UserProvider'
+import { AccessRequestModal } from '@/components/cases/AccessRequestModal'
 
 const INTEL_KEY        = 'wb_intel_open'
 const INTEL_FOLDED_KEY = 'wb_intel_folded'
@@ -63,7 +64,7 @@ function virtualChannel(caseId: string, type: 'client' | 'vendor' | 'other', pos
 export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = use(params)
   const router = useRouter()
-  const { user, role } = useUser()
+  const { user, role, loaded } = useUser()
 
   const [shipmentCase,    setCase]    = useState<ShipmentCase | null>(null)
   const [channels,        setChannels] = useState<CaseChannel[]>([])
@@ -76,6 +77,11 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
   const [intelWidth,      setIntelWidth]  = useState<number>(() => loadIntelWidth())
   const [pendingOtherPanels, setPendingOtherPanels] = useState(0)
   const [colWidths,       setColWidths] = useState<number[]>(() => loadColWidths())
+  const [isReadOnly,        setReadOnly]         = useState(false)
+  const [accessGrant,       setAccessGrant]       = useState<CaseAccessGrant | null>(null)
+  const [operatorGrant,     setOperatorGrant]     = useState<(CaseAccessGrant & { profiles?: { display_name: string | null } }) | null>(null)
+  const [pendingGrant,      setPendingGrant]      = useState<(CaseAccessGrant & { profiles?: { display_name: string | null } }) | null>(null)
+  const [showPendingModal,  setShowPendingModal]  = useState(false)
 
   const containerRef  = useRef<HTMLDivElement>(null)
   const colWidthsRef  = useRef<number[]>(colWidths)
@@ -132,10 +138,53 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
       : { data: null }
     const caseData = byRef || byId
     if (!caseData) { setLoading(false); return }
-    if (role !== 'manager' && user?.id && caseData.operator_id !== user.id) {
-      router.replace('/workbench')
-      return
+
+    const isOwnCase = caseData.operator_id === user?.id || caseData.operator_id === null
+
+    if (!isOwnCase) {
+      if (role === 'manager') {
+        // Check if manager has an active access grant for this case (include operator name)
+        const { data: grant } = await supabase
+          .from('case_access_grants')
+          .select('*, profiles!operator_id(display_name)')
+          .eq('case_id', caseData.id)
+          .eq('manager_id', user!.id)
+          .eq('status', 'granted')
+          .maybeSingle()
+        if (!grant) { router.replace('/workbench'); return }
+        setReadOnly(true)
+        setAccessGrant(grant)
+      } else {
+        // Operator accessing someone else's case — not allowed
+        router.replace('/workbench')
+        return
+      }
+    } else {
+      setReadOnly(false)
+      setAccessGrant(null)
+      // Operator: check for granted and pending manager grants on this case
+      if (role !== 'manager' && user?.id) {
+        const [{ data: opGrant }, { data: pending }] = await Promise.all([
+          supabase
+            .from('case_access_grants')
+            .select('*, profiles!manager_id(display_name)')
+            .eq('case_id', caseData.id)
+            .eq('operator_id', user.id)
+            .eq('status', 'granted')
+            .maybeSingle(),
+          supabase
+            .from('case_access_grants')
+            .select('*, profiles!manager_id(display_name)')
+            .eq('case_id', caseData.id)
+            .eq('operator_id', user.id)
+            .eq('status', 'pending')
+            .maybeSingle(),
+        ])
+        setOperatorGrant(opGrant ?? null)
+        setPendingGrant(pending ?? null)
+      }
     }
+
     setCase(caseData)
 
     const caseId = caseData.id
@@ -173,15 +222,17 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
   }
 
   useEffect(() => {
+    if (!loaded) return   // wait for auth — user/role are null until then
     load()
     const rt = supabase.channel('wb-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_messages' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_drafts' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'case_channels'  }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_messages'    }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_drafts'    }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'case_channels'     }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'case_access_grants'}, load)
       .subscribe()
     return () => { supabase.removeChannel(rt) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref])
+  }, [ref, loaded])
 
   // Normalise column widths when panel count changes
   useEffect(() => {
@@ -243,6 +294,27 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
     )
   }
 
+  async function handleApprovePending(note?: string) {
+    if (!pendingGrant) return
+    await fetch('/api/case-access/grant', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_id: pendingGrant.id, note }),
+    })
+    setShowPendingModal(false)
+    setPendingGrant(null)
+    load()
+  }
+
+  async function handleRejectPending(note?: string) {
+    if (!pendingGrant) return
+    await fetch('/api/case-access/revoke', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant_id: pendingGrant.id, note }),
+    })
+    setShowPendingModal(false)
+    setPendingGrant(null)
+  }
+
   // Derive display channels — always show client + vendor (virtual if no DB row)
   const clientCh = channels.find(c => c.channel_type === 'client')
   const vendorCh = channels.find(c => c.channel_type === 'vendor')
@@ -257,6 +329,17 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
   ]
 
   return (
+    <>
+    {showPendingModal && pendingGrant && (
+      <AccessRequestModal
+        grant={pendingGrant}
+        managerName={(pendingGrant as any).profiles?.display_name ?? 'A teammate'}
+        caseRef={shipmentCase.ref_number ?? shipmentCase.id.slice(0, 8)}
+        onGrant={handleApprovePending}
+        onReject={handleRejectPending}
+        onDismiss={() => setShowPendingModal(false)}
+      />
+    )}
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
       {/* Case context bar */}
@@ -297,7 +380,39 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', background: 'var(--es-n-25)' }}>
 
         {/* Thread panels */}
-        <div ref={containerRef} style={{ display: 'flex', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <div ref={containerRef} style={{ display: 'flex', flex: 1, minWidth: 0, overflow: 'hidden', flexDirection: 'column' }}>
+
+          {/* Green banner for manager: who granted them access */}
+          {isReadOnly && accessGrant && (
+            <div className="wb-access-granted-banner">
+              <Eye size={13} strokeWidth={1.5} />
+              <span>
+                <strong>{(accessGrant as any).profiles?.display_name ?? 'Your colleague'}</strong>
+                {' '}granted you view access to this case. Read-only — you cannot send emails.
+              </span>
+            </div>
+          )}
+
+          {/* Amber banner for operator: pending access request */}
+          {pendingGrant && !isReadOnly && (
+            <div className="wb-pending-access-banner">
+              <ShieldAlert size={13} strokeWidth={1.5} />
+              <span>
+                <strong>{(pendingGrant as any).profiles?.display_name ?? 'A teammate'}</strong>
+                {' '}has requested view access to this case
+              </span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                <button className="wb-pending-btn wb-pending-btn--approve" onClick={() => setShowPendingModal(true)}>
+                  Approve
+                </button>
+                <button className="wb-pending-btn wb-pending-btn--reject" onClick={() => setShowPendingModal(true)}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flex: 1, minWidth: 0, overflow: 'hidden' }}>
           {displayChannels.map((ch, i) => (
             <div key={ch.id} style={{ display: 'flex', width: `${colWidths[i] ?? (100 / displayChannels.length)}%`, flexShrink: 0, minWidth: 0, height: '100%' }}>
               <WorkbenchThreadCol
@@ -309,6 +424,16 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
                 onAction={load}
                 onChannelCreated={ch.id.startsWith('__virtual_') ? () => setPendingOtherPanels(p => Math.max(0, p - 1)) : undefined}
                 style={{ flex: 1, minWidth: 0 }}
+                readOnly={isReadOnly}
+                operatorGrant={operatorGrant ?? undefined}
+                onRevokeAccess={operatorGrant ? async () => {
+                  await fetch('/api/case-access/revoke', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ grant_id: operatorGrant.id }),
+                  })
+                  setOperatorGrant(null)
+                } : undefined}
               />
               {i < displayChannels.length - 1 && (
                 <div className="wb-resize-handle" onMouseDown={e => startResize(i, e)} />
@@ -324,7 +449,8 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
           >
             <Plus size={12} />
           </div>
-        </div>
+          </div>{/* end inner horizontal columns div */}
+        </div>{/* end containerRef column div */}
 
         {/* Intel panel — resizable + foldable */}
         {intelOpen && (
@@ -355,5 +481,6 @@ export default function CaseWorkbenchPage({ params }: { params: Promise<{ ref: s
 
       </div>
     </div>
+    </>
   )
 }

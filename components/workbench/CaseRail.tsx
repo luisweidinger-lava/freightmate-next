@@ -45,7 +45,6 @@ export default function CaseRail() {
   useEffect(() => {
     async function fetch() {
       if (!loaded) return
-      if (role === 'manager') { setCases([]); setLoading(false); return }
       const { data } = await supabase
         .from('shipment_cases')
         .select('id, ref_number, status, client_name, priority, updated_at')

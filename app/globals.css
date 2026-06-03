@@ -542,6 +542,59 @@ body {
 }
 .es-open-wb:hover { background: var(--es-brand); color: white; border-color: var(--es-brand); }
 
+/* ── Case action group (Re-link + Open in Workbench) ── */
+.es-wb-action-group {
+  margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+}
+.es-wb-action-group .es-open-wb { margin-left: 0; }
+.es-relink-anchor { position: relative; }
+
+/* Re-link popup panel */
+.es-relink-popup {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 200;
+  background: var(--es-n-0); border: 1px solid var(--es-n-150);
+  border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06);
+  width: 220px;
+}
+.es-relink-search-wrap {
+  padding: 8px 8px 6px; border-bottom: 1px solid var(--es-n-100);
+}
+.es-relink-search-input {
+  width: 100%; height: 28px; padding: 0 8px; box-sizing: border-box;
+  border: 1px solid var(--es-brand-border); border-radius: 3px;
+  font-family: Arial, sans-serif; font-size: 12px;
+  background: var(--es-n-0); color: var(--es-n-900);
+}
+.es-relink-search-input:focus { outline: 2px solid var(--es-brand); outline-offset: 1px; }
+.es-relink-list { max-height: 200px; overflow-y: auto; padding: 4px 0; }
+.es-relink-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; text-align: left; padding: 6px 12px;
+  font-size: 12px; font-family: Arial, monospace; font-weight: 600; color: var(--es-n-700);
+  background: none; border: none; cursor: pointer;
+}
+.es-relink-item:hover:not(.current):not(:disabled) {
+  background: var(--es-brand-light); color: var(--es-brand);
+}
+.es-relink-item.current { color: var(--es-n-300); cursor: default; }
+.es-relink-current-badge {
+  font-size: 10px; font-family: Arial, sans-serif; font-weight: 400;
+  color: var(--es-n-300); background: var(--es-n-50);
+  border: 1px solid var(--es-n-150); border-radius: 2px; padding: 1px 5px;
+}
+.es-relink-empty {
+  padding: 12px; text-align: center; font-size: 12px;
+  color: var(--es-n-400); font-family: Arial, sans-serif;
+}
+.es-relink-footer { border-top: 1px solid var(--es-n-100); padding: 4px 0; }
+.es-relink-remove-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; text-align: left; padding: 7px 12px;
+  font-size: 12px; font-family: Arial, sans-serif; color: var(--es-urgent);
+  background: none; border: none; cursor: pointer;
+}
+.es-relink-remove-btn:hover { background: var(--es-urgent-bg); }
+
 .es-triage-bar {
   padding: 10px 16px; background: var(--es-high-bg);
   border-bottom: 1px solid var(--es-high-bd);
@@ -1518,7 +1571,78 @@ body {
 
 .open-wb-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--es-n-0); color: var(--es-brand); border: 1px solid var(--es-brand-border); padding: 3px 9px; border-radius: 3px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: Arial, sans-serif; white-space: nowrap; opacity: 0; transition: opacity 150ms, background 150ms, color 150ms; }
 .open-wb-btn:hover { background: var(--es-brand); color: white; border-color: var(--es-brand); }
+.open-wb-btn:disabled { opacity: 0.45 !important; cursor: not-allowed; }
 .es-table tbody tr:hover .open-wb-btn { opacity: 1; }
+.open-wb-btn--visible { opacity: 1 !important; }
+.open-wb-btn--access { background: var(--es-ok-bg); color: var(--es-ok); border-color: var(--es-ok-bd); }
+.open-wb-btn--access:hover { background: var(--es-ok); color: white; border-color: var(--es-ok); }
+
+.action-cell { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+
+.request-access-btn { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--es-n-500); border: 1px solid var(--es-n-150); padding: 3px 9px; border-radius: 3px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: Arial, sans-serif; white-space: nowrap; transition: background 150ms, color 150ms, border-color 150ms; opacity: 0; }
+.es-table tbody tr:hover .request-access-btn { opacity: 1; }
+.request-access-btn:hover { background: var(--es-brand-light); color: var(--es-brand); border-color: var(--es-brand-border); }
+
+.withdraw-access-btn { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--es-urgent); border: 1px solid var(--es-urgent-bd); padding: 3px 9px; border-radius: 3px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: Arial, sans-serif; white-space: nowrap; transition: background 150ms; }
+.withdraw-access-btn:hover { background: var(--es-urgent-bg); }
+.withdraw-access-btn--sm { padding: 2px 7px; font-size: 11px; }
+
+.cell-assignee { font-size: 11.5px; color: var(--es-n-600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; display: block; }
+
+/* ── Workbench access banners ─────────────────────────────────────────────── */
+.wb-readonly-banner { display: flex; align-items: center; gap: 7px; padding: 7px 14px; background: #FFFBEB; border-bottom: 1px solid #FCD34D; color: #92400E; font-size: 11.5px; font-weight: 500; flex-shrink: 0; }
+.wb-manager-access-banner { display: flex; align-items: center; gap: 7px; padding: 7px 12px; background: var(--es-ok-bg); border-top: 1px solid var(--es-ok-bd); color: var(--es-ok); font-size: 11.5px; flex-shrink: 0; }
+/* Green — manager sees who granted them access */
+.wb-access-granted-banner { display: flex; align-items: center; gap: 7px; padding: 7px 14px; background: var(--es-ok-bg); border-bottom: 1px solid var(--es-ok-bd); color: var(--es-ok); font-size: 11.5px; font-weight: 500; flex-shrink: 0; }
+/* Amber — operator sees a pending access request */
+.wb-pending-access-banner { display: flex; align-items: center; gap: 8px; padding: 7px 14px; background: #FFFBEB; border-bottom: 1px solid #FCD34D; color: #92400E; font-size: 11.5px; font-weight: 500; flex-shrink: 0; }
+.wb-pending-btn { font-size: 11px; padding: 3px 10px; border-radius: 3px; border: 1px solid; cursor: pointer; font-weight: 600; font-family: Arial, sans-serif; transition: background 150ms; }
+.wb-pending-btn--approve { background: var(--es-brand); color: #fff; border-color: var(--es-brand); }
+.wb-pending-btn--approve:hover { background: var(--es-brand-hover); }
+.wb-pending-btn--reject  { background: transparent; color: #92400E; border-color: #FCD34D; }
+.wb-pending-btn--reject:hover { background: #FEF3C7; }
+
+/* ── Access Request Modal ─────────────────────────────────────────────────── */
+.access-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.access-modal { background: var(--es-n-0); border: 1px solid var(--es-n-150); border-radius: 6px; padding: 20px 24px; max-width: 400px; width: 100%; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+.access-modal-icon { color: var(--es-brand); }
+.access-modal-title { font-size: 13.5px; font-weight: 700; color: var(--es-n-900); margin: 0 0 4px; }
+.access-modal-msg { font-size: 12.5px; color: var(--es-n-600); margin: 0; line-height: 1.5; }
+.access-modal-body { display: flex; flex-direction: column; gap: 4px; }
+.access-modal-note { font-size: 12px; font-family: Arial, sans-serif; padding: 7px 10px; border: 1px solid var(--es-n-150); border-radius: 3px; color: var(--es-n-700); background: var(--es-n-0); resize: none; outline: none; }
+.access-modal-note:focus { border-color: var(--es-brand-border); }
+.access-modal-actions { display: flex; gap: 8px; }
+.access-modal-btn { padding: 5px 16px; border-radius: 3px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: Arial, sans-serif; border: 1px solid transparent; transition: background 150ms; }
+.access-modal-btn--grant { background: var(--es-brand); color: white; border-color: var(--es-brand); }
+.access-modal-btn--grant:hover { background: var(--es-brand-hover); }
+.access-modal-btn--reject { background: var(--es-n-0); color: var(--es-urgent); border-color: var(--es-urgent-bd); }
+.access-modal-btn--reject:hover { background: var(--es-urgent-bg); }
+.access-modal-btn--dismiss { background: var(--es-n-0); color: var(--es-n-600); border-color: var(--es-n-150); }
+.access-modal-btn--dismiss:hover { background: var(--es-n-50); }
+
+/* ── Share case button (cases table action cell) ──────────────────────────── */
+.share-case-btn { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--es-n-500); border: 1px solid var(--es-n-150); padding: 3px 8px; border-radius: 3px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: Arial, sans-serif; white-space: nowrap; opacity: 0; transition: opacity 150ms, background 150ms, color 150ms, border-color 150ms; }
+.es-table tbody tr:hover .share-case-btn { opacity: 1; }
+.share-case-btn:hover { background: var(--es-brand-light); color: var(--es-brand); border-color: var(--es-brand-border); }
+
+/* ── Share Case Modal ─────────────────────────────────────────────────────── */
+.share-modal { max-width: 460px; }
+.share-modal-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.share-modal-close { background: none; border: none; cursor: pointer; color: var(--es-n-400); padding: 2px; border-radius: 3px; display: flex; }
+.share-modal-close:hover { color: var(--es-n-700); background: var(--es-n-50); }
+.share-modal-loading { display: flex; justify-content: center; padding: 16px 0; color: var(--es-n-300); }
+.share-modal-empty { font-size: 12.5px; color: var(--es-n-400); margin: 0; text-align: center; padding: 8px 0; }
+.share-modal-section-label { font-size: 11px; font-weight: 600; color: var(--es-n-400); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 4px; }
+.share-modal-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.share-modal-member { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; border: 1px solid var(--es-n-100); border-radius: 4px; background: var(--es-n-25); gap: 8px; }
+.share-modal-member-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.share-modal-member-name { font-size: 12.5px; font-weight: 600; color: var(--es-n-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-modal-member-email { font-size: 11px; color: var(--es-n-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-modal-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 3px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: Arial, sans-serif; border: 1px solid; transition: background 150ms; white-space: nowrap; }
+.share-modal-btn--share  { background: var(--es-brand); color: #fff; border-color: var(--es-brand); }
+.share-modal-btn--share:hover  { background: var(--es-brand-hover); }
+.share-modal-btn--revoke { background: transparent; color: var(--es-urgent); border-color: var(--es-urgent-bd); }
+.share-modal-btn--revoke:hover { background: var(--es-urgent-bg); }
 
 /* ── CRM ─────────────────────────────────────────────────────────────────────── */
 .crm-main { flex: 1; overflow-y: auto; background: var(--es-n-50); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
